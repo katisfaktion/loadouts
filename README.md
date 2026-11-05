@@ -271,7 +271,7 @@ The schema rejects unknown fields and checks source, group, MCP and routing stru
 
 ## Development
 
-Use Bun 1.3.14. Run `bun install`, `bun test`, and `bun run build`. Tests use temporary homes, local Git catalogs and a fake skills installer. No test calls real `npx skills` or external services.
+Use Bun 1.4.4. Run `bun install`, `bun test`, and `bun run build`. CI runs the test suite once per pull-request update; merging to `main` runs release automation without repeating tests. Tests use temporary homes, local Git catalogs and a fake skills installer. No test calls real `npx skills` or external services.
 
 The unpublished baseline is `0.0.0`. The initial minor Changesets generate the `0.1.0` release PR; merging that PR publishes the first tag and binaries. Review the catalog separately after the CLI release exists.
 
