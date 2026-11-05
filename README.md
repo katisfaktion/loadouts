@@ -169,7 +169,7 @@ For an adapted loadout, ask your agent to compare it with its original revision 
 - **Package companion skills** selected with `packageSkills` from installed application dependencies. Update your dependencies, then run `loadouts install` to synchronize their companions; no separate `loadouts update` is needed.
 - **Native Claude and Codex plugins** when their hooks or other bundled features add value beyond skills alone.
 - **MCP servers**, working conventions and routing instructions that tell agents when to use each part of the setup.
-- **Installer integrations**, currently codebase-memory, that reuse an existing global installation and configure and index the project.
+- **Installer integrations**, like codebase-memory, that reuse an existing global installation and configure and index the project.
 
 Loadouts can offer mutually exclusive choices (`one_of`), optional combinations (`any_of`), and agent-specific overrides. See the [configuration reference](docs/reference.md) for examples and integration requirements.
 
