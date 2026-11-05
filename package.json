@@ -1,0 +1,9 @@
+{
+  "name": "loadouts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@changesets/cli": "^3.0.3"
+  }
+}
