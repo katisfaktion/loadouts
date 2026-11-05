@@ -6,6 +6,8 @@ Give each project the skills, tools and working conventions it needs. Declare th
 
 A **loadout** is a YAML file that brings together skills, plugins, MCP servers and instructions for a kind of work. Keep loadouts in your project while you refine them, then share proven ones through a GitHub catalog.
 
+Compose a project from focused loadouts—such as React, Payload, testing and deployment—selected together in `loadouts.json`. Each can be reused and improved independently. Loadout files currently have no `include` mechanism.
+
 - **Reuse what works.** Select shared loadouts or write your own project-local definitions.
 - **Keep the team in sync.** Commit a manifest and locks so a new checkout can restore the declared setup.
 - **Use your agents normally.** Loadouts writes native project configuration for Claude Code, Codex CLI and Codex Desktop.
@@ -41,15 +43,15 @@ loadouts status
 
 ```sh
 loadouts init --harness claude-code,codex
-loadouts create project
+loadouts create workflow
 ```
 
 Use `--harness codex` or `--harness claude-code` if you use only one. Initialization creates the manifest and local catalog; it does not install components.
 
-Edit `.loadouts/catalog/project.yml`. Keep its generated schema comment and add your setup. This small example gives both agents shared working conventions:
+Edit `.loadouts/catalog/workflow.yml`. Keep its generated schema comment and add your setup. This small loadout gives both agents reusable working conventions; add other concerns as separate loadouts:
 
 ```yaml
-name: project
+name: workflow
 items:
   workflow:
     conventions: Run the project's tests before proposing a change. Follow existing code patterns.
@@ -61,8 +63,8 @@ routing:
 Validate and apply it:
 
 ```sh
-loadouts validate .loadouts/catalog/project.yml
-loadouts add file:./.loadouts/catalog/project.yml
+loadouts validate .loadouts/catalog/workflow.yml
+loadouts add file:./.loadouts/catalog/workflow.yml
 loadouts status
 ```
 
@@ -90,6 +92,25 @@ loadouts add github:OWNER/OTHER-REPO/NAME@v1.0.0
 ```
 
 If a name is already selected from another source, `add` shows the old and new sources and asks before replacing it. A local file with the same name does not silently override the selection; `doctor` explains the collision.
+
+### Catalog repository layout
+
+Shared catalogs keep their definitions directly inside a top-level `loadouts/` directory:
+
+```text
+agent-loadouts/
+├── README.md
+└── loadouts/
+    ├── react.yml
+    ├── payload.yml
+    └── testing.yml
+```
+
+Each file contains one loadout, with `name` matching its filename: `react.yml` declares `name: react`. Use `.yml`; nested directories and `.yaml` files are not discovered. The repository needs committed definitions, but no package manifest, catalog index or copy of the CLI schemas. A README explaining the entries is recommended.
+
+This shared layout is different from a consuming project's `.loadouts/catalog/` directory. `publish` copies a verified local `.loadouts/catalog/react.yml` to `loadouts/react.yml` in the catalog and proposes it through a PR.
+
+See [maintaining a catalog](docs/reference.md#shared-catalog-repositories) for a complete entry, local validation, version selection and contribution review.
 
 ## Everyday workflow
 
@@ -128,17 +149,19 @@ Ask your agent:
 
 > I want to create an agent loadout for this project.
 
-`loadouts explore` provides the agent with an [exploration guide](skills/loadouts-explore/SKILL.md). It directs the agent to inspect the project and your existing setup, search with `npx skills find`, verify candidates, and use `loadouts create` and `loadouts validate` to write a local draft.
+`loadouts explore` provides the agent with an [exploration guide](skills/loadouts-explore/SKILL.md). It directs the agent to inspect the project and your existing setup, search with `npx skills find`, and propose a composition: reuse suitable shared loadouts unchanged, adapt those that need improvements, and create separate local drafts for missing concerns. It uses `loadouts create` and `loadouts validate` for each draft.
 
-Exploration stops at a proposal. It does not install the draft or claim it has been proven on a real task. Review it, select it with `loadouts add`, and try it on your own work.
+Exploration stops at proposals. It does not install drafts or claim they have been proven on a real task. Review them, select the approved sources with `loadouts add`, and try them on your own work.
 
 Once it has proved useful, preview a contribution to your catalog:
 
 ```sh
-loadouts publish project --catalog OWNER/REPO --summary 'Describe the real work used to verify this loadout'
+loadouts publish workflow --catalog OWNER/REPO --summary 'Describe the real work used to verify this loadout'
 ```
 
 Add `--yes` to push a contribution branch and open a pull request using authenticated `gh`. Publication does not merge the PR or switch your project to the shared source.
+
+For an adapted loadout, ask your agent to compare it with its original revision and current upstream before proposing the change. Keep the upstream name to update the same catalog entry. The agent reviews and reconciles the differences; `publish` copies the whole file and does not merge upstream changes automatically.
 
 ## What can a loadout include?
 

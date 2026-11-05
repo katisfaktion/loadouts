@@ -188,11 +188,76 @@ Generated Codex settings use TOML table sections and preserve unrelated native p
 
 ## Catalog editing
 
+### Shared catalog repositories
+
+A shared catalog is a Git repository with a flat, top-level `loadouts/` directory. This is separate from `.loadouts/catalog/`, where consuming projects keep local drafts.
+
+```text
+agent-loadouts/
+├── README.md                         # Recommended: purpose and usage of each entry
+├── loadouts/                         # Required: committed loadout definitions
+│   ├── react.yml
+│   ├── payload.yml
+│   └── testing.yml
+└── .github/
+    └── pull_request_template.md      # Optional: included by loadouts publish
+```
+
+Only direct `loadouts/*.yml` entries are discovered. Files ending in `.yaml`, definitions at the repository root, and nested paths such as `loadouts/frontend/react.yml` are not discovered. Each file defines one loadout; its `name` must equal the filename without `.yml`. Use letters, digits, dots, underscores or hyphens in names. Use ordinary files and directories; the publisher rejects symlinks in destination paths.
+
+No `package.json`, catalog index, `loadouts.json` or loadouts lockfile is required to distribute a catalog. Those last two files describe a consuming project's selections and applied setup. A catalog repository can itself use loadouts for its own development, but those project files do not define its public entries. Keep the CLI schemas in the CLI repository and reference a published release over HTTPS.
+
+A complete minimal entry at `loadouts/testing.yml` is:
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/katisfaktion/loadouts/v0.1.0/schemas/v1/loadout.schema.json
+name: testing
+items:
+  regression:
+    conventions: Add a regression test for each bug fix and run the relevant test suite.
+routing:
+  - when: Fixing bugs or changing tested behavior
+    use: [regression]
+```
+
+The schema URL becomes available when that CLI release is published. `loadouts validate` works offline and does not fetch the schema. Add verified skills, plugins or MCP definitions to the appropriate items as needed; a catalog does not need to vendor their contents.
+
+From a catalog checkout, validate each YAML file before committing:
+
+```sh
+loadouts validate loadouts/testing.yml
+```
+
+After committing, inspect what consumers will see without publishing the repository:
+
+```sh
+loadouts list --catalog "$PWD"
+loadouts show testing --catalog "$PWD" --json
+```
+
+The path must be absolute. These commands read Git objects through a cached clone, so uncommitted edits are not visible. If the repository already has release tags, the default view selects a tag rather than the newest branch commit. Validate working files directly when reviewing an unpublished change.
+
+Consumers can select `github:OWNER/REPO/testing` or an explicit `github:OWNER/REPO/testing@REF`. Without a ref, the resolver chooses the highest version-sorted stable tag matching `vX.Y.Z` or `X.Y.Z`; if none exists, it uses the clone's `HEAD`. Prerelease tags are not automatically selected. The lock records the resolved commit. `install` restores that resolution, while `update` can advance it within the declared ref. Use immutable tags for catalog releases; the catalog's version is independent of the CLI version used by its schema comments.
+
+### Compose and adapt reusable entries
+
+Select multiple focused loadouts in the project manifest instead of placing the whole stack in a single YAML file. There is no `include` or `extends` field. Keep related capabilities together—React conventions and React skills may belong in one entry—while keeping independently reusable concerns such as Payload and deployment separate. Reuse suitable shared entries unchanged instead of copying them all locally.
+
+To adapt a shared `react` entry for a future upstream improvement, use `loadouts create react --from react` after checking its source. `create --from` uses the project's locked default catalog, or the machine default if there is no locked default; it does not accept a catalog override. For another source, use plain `create` and edit the draft from verified upstream YAML. Record the actual repository, file path, ref and resolved commit in a YAML comment or review notes: copying does not retain that provenance automatically. Do not add unsupported provenance fields to the YAML format.
+
+Keeping the name `react` makes publication target `loadouts/react.yml`. Renaming the draft to `react-custom` instead proposes `loadouts/react-custom.yml`; it will not update the original. Existing drafts must be reviewed before editing and are never overwritten by `create`.
+
+After application and real-issue verification, ask your agent to compare the local definition against both its recorded base revision and the target catalog's current default branch. Use a temporary Git checkout and ordinary Git/file diffs. The CLI has no diff command, and `publish` preview prints proposed YAML and PR metadata rather than an upstream diff. Review semantic changes as well as formatting. If the original base is unknown, report that limitation.
+
+`publish` writes the complete local file on top of the target's default branch; it does not perform a three-way merge. Preserve intervening upstream improvements before contributing. Reconcile the draft, validate it, install it, and verify changed behavior again. Then preview and, with publication approval, open a focused PR for each useful loadout. If nothing meaningful differs, no PR is needed. After a merge/release, switching the project from its local file to the shared source remains an explicit `add` decision.
+
+### Agent-assisted exploration
+
 To build a loadout from a real project, ask your agent:
 
 > I want to create an agent loadout for this project.
 
-The agent discovers the workflow through `loadouts help`, then reads `loadouts explore` and the relevant command help. You do not need to name the command in your request. `loadouts explore` prints the bundled [exploration skill](../skills/loadouts-explore/SKILL.md); it does not start an agent. The skill is included in the native binary and needs no global skill installation. Your agent inspects the project and existing user plugins and skills, runs `npx skills find` separately for the relevant stack technologies, verifies candidates against primary sources and plugin documentation, uses `loadouts create` to scaffold `.loadouts/catalog/<name>.yml`, edits and validates it, and explains source evidence and uncertainties. Existing drafts are preserved unless revision is explicitly authorized. Recommendations are not marked as verified on a real issue.
+The agent discovers the workflow through `loadouts help`, then reads `loadouts explore` and the relevant command help. You do not need to name the command in your request. `loadouts explore` prints the bundled [exploration skill](../skills/loadouts-explore/SKILL.md); it does not start an agent. The skill is included in the native binary and needs no global skill installation. Your agent inspects the project and existing user plugins and skills, runs `npx skills find` separately for the relevant stack technologies, and verifies candidates against primary sources and plugin documentation. It proposes a composition of unchanged shared entries, focused adaptations, and new reusable loadouts; it uses `loadouts create` and `validate` for each draft and explains source evidence and uncertainties. Existing drafts are preserved unless revision is explicitly authorized. Recommendations are not marked as verified on a real issue.
 
 These commands work before setup or initialization:
 
