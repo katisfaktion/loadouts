@@ -8,8 +8,10 @@ const platforms = ["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64", "wi
 function prepare() {
   const t = tempEnv();
   mkdirSync(join(t.project, "dist"));
-  writeFileSync(join(t.project, "package.json"), JSON.stringify({ version: "1.2.3" }));
+  const source = JSON.parse(readFileSync(join(repo, "package.json"), "utf8"));
+  writeFileSync(join(t.project, "package.json"), JSON.stringify({ ...source, version: "1.2.3" }));
   writeFileSync(join(t.project, "README.md"), "Fixture readme");
+  cpSync(join(repo, "LICENSE"), join(t.project, "LICENSE"));
   for (const platform of platforms) {
     const filename = `loadouts-bun-${platform.replace("win32", "windows")}${platform.startsWith("win32") ? ".exe" : ""}`;
     writeFileSync(join(t.project, "dist", filename), "#!/bin/sh\nprintf '%s\\n' \"$@\"\nexit 7\n", { mode: 0o755 });
@@ -26,6 +28,9 @@ test("npm packages pair an exact release with only the matching native binary", 
   const manifest = JSON.parse(readFileSync(join(dir, "loadouts/package.json"), "utf8"));
   expect(manifest.name).toBe("@katisfaktion/loadouts");
   expect(manifest.version).toBe("1.2.3");
+  expect(manifest.keywords).toEqual(expect.arrayContaining(["claude-code", "openai-codex", "agent-skills", "mcp"]));
+  expect(manifest.author.name).toBe("katisfaktion");
+  expect(manifest.license).toBe("MIT");
   expect(manifest.bin).toEqual({ loadouts: "bin/loadouts.cjs" });
   expect(manifest.dependencies).toBeUndefined();
   expect(manifest.scripts).toBeUndefined();
@@ -35,6 +40,8 @@ test("npm packages pair an exact release with only the matching native binary", 
     const [os, cpu] = platform.split("-");
     expect(pkg.name).toBe(`@katisfaktion/loadouts-${platform}`);
     expect(pkg.version).toBe(manifest.version);
+    expect(pkg.license).toBe(manifest.license);
+    expect(pkg.author).toEqual(manifest.author);
     expect(pkg.os).toEqual([os]);
     expect(pkg.cpu).toEqual([cpu]);
     expect(pkg.libc).toEqual(os === "linux" ? ["glibc"] : undefined);
@@ -74,7 +81,8 @@ test("packed npm tarballs install offline and run without Bun or install scripts
   const packages = [`loadouts-${process.platform}-${process.arch}`, "loadouts"].map(name => {
     const cwd = join(dir, name);
     const [packed] = JSON.parse(npm(["pack", "--ignore-scripts", "--json"], cwd));
-    expect(packed.files.every((file: any) => file.path === "package.json" || file.path === "README.md" || file.path.startsWith("bin/"))).toBe(true);
+    expect(packed.files.map((file: any) => file.path)).toContain("LICENSE");
+    expect(packed.files.every((file: any) => ["package.json", "README.md", "LICENSE"].includes(file.path) || file.path.startsWith("bin/"))).toBe(true);
     return join(cwd, packed.filename);
   });
   const consumer = join(t.home, "consumer");
