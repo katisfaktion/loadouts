@@ -108,9 +108,9 @@ test("conflicting MCP definitions fail before writes", async () => {
   expect(r.code).toBe(1); expect(r.stderr).toContain("one/x"); expect(r.stderr).toContain("two/x"); expect(t.text("loadouts.lock.json")).toBe(before);
 });
 
-test("update preserves choices and aborts if a selected member disappears", async () => {
+test("update preserves explicit choices and aborts if a selected member disappears", async () => {
   const t = await projectFixture();
-  await run(["add", "base", "--catalog", t.catalog], t.opts);
+  await run(["add", "base", "--catalog", t.catalog, "--with", "base/methodology=superpowers"], t.opts);
   const file = join(t.catalog, "loadouts/base.yml");
   writeFileSync(file, readFileSync(file, "utf8").replace("Terse code, platform features before dependencies.", "Updated conventions."));
   git(t.catalog, "add", "."); git(t.catalog, "commit", "-m", "New conventions"); git(t.catalog, "tag", "v1.1.0");

@@ -1,41 +1,27 @@
-import { existsSync, lstatSync, readFileSync, readdirSync, mkdirSync, copyFileSync, unlinkSync, constants } from "node:fs";
+import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { CliError } from "./errors";
 import { writeIfChanged } from "./paths";
 import { openCatalog, readLoadout, type CatalogRef } from "./catalog";
-import { defaultChoices, parseLoadout, type Choices, type Harness } from "./loadout";
-import { readLock, writeLock, type Lock } from "./lock";
+import { resolveChoices, activeIncludes, includeDeclarations, declaredItems, parseLoadout, type Choices, type Harness, type Loadout } from "./loadout";
+import type { Lock } from "./lock";
 
-export interface Manifest { harnesses: Harness[]; loadouts: Record<string, {source: string; choices?: Choices}> }
-type ParsedSource = {kind: "file"; name: string; path: string} | {kind: "catalog"; name: string; repo: string; ref?: string};
-const namePattern = /^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/;
+import { parseSource, validateSelection, type ParsedSource, type LoadoutSelection } from "./sources";
+export { parseSource, fileSource, catalogSource } from "./sources";
+
+export interface Manifest { harnesses: Harness[]; loadouts: Record<string, LoadoutSelection> }
 const object = (v: any): v is Record<string, any> => v !== null && typeof v === "object" && !Array.isArray(v);
-export function fileSource(name: string): string { return `file:./.loadouts/catalog/${name}.yml`; }
-export function catalogSource(repo: string, name: string, ref?: string): string {
-  const source = repo.startsWith("/") ? `file:${repo}#${name}` : `github:${repo}/${name}`;
-  const result = source + (ref ? `@${ref}` : ""); parseSource(result); return result;
-}
-export function parseSource(source: string): ParsedSource {
-  if (typeof source === "string") {
-    const file = /^file:\.\/\.loadouts\/catalog\/([A-Za-z0-9_-][A-Za-z0-9_.-]*)\.yml$/.exec(source);
-    if (file) return {kind: "file", name: file[1]!, path: source.slice(7)};
-    const github = /^github:([A-Za-z0-9_-][\w.-]*\/[A-Za-z0-9_-][\w.-]*)\/([A-Za-z0-9_-][\w.-]*)(?:@([^\s@#]+))?$/.exec(source);
-    const localGit = /^file:(\/[^#@]+)#([A-Za-z0-9_-][\w.-]*)(?:@([^\s@#]+))?$/.exec(source);
-    const match = github ?? localGit;
-    if (match) return {kind: "catalog", repo: match[1]!, name: match[2]!, ...(match[3] ? {ref: match[3]} : {})};
-  }
-  throw new CliError(`invalid loadout source ${source}`, 2, "use file:./.loadouts/catalog/<name>.yml or github:owner/repo/<name>[@ref]");
-}
 export function validateManifest(value: unknown): Manifest {
   if (!object(value) || Object.keys(value).some(k => !["$schema", "harnesses", "loadouts"].includes(k)) || (value.$schema !== undefined && typeof value.$schema !== "string") || !Array.isArray(value.harnesses) || value.harnesses.some(h => !["claude-code", "codex"].includes(h)) || new Set(value.harnesses).size !== value.harnesses.length || !object(value.loadouts)) throw new CliError("invalid loadouts.json", 1, "declare harnesses and a loadouts object with explicit sources; run loadouts help install");
   for (const [name, entry] of Object.entries(value.loadouts)) {
-    if (!namePattern.test(name) || !object(entry) || Object.keys(entry).some(k => !["source", "choices"].includes(k)) || parseSource(entry.source).name !== name || (entry.choices !== undefined && (!object(entry.choices) || Object.entries(entry.choices).some(([g, members]) => !namePattern.test(g) || !Array.isArray(members) || members.some(m => typeof m !== "string" || !namePattern.test(m)) || new Set(members).size !== members.length)))) throw new CliError(`invalid loadouts.json entry ${name}`, 1, "match the source name to its key and use choices as group-to-member arrays");
+    try { validateSelection(name, entry); }
+    catch { throw new CliError(`invalid loadouts.json entry ${name}`, 1, "match the source name to its key and use choices as group-to-member arrays"); }
   }
   return value as unknown as Manifest;
 }
 export function readManifest(project: string): Manifest {
   const file = join(project, "loadouts.json");
-  if (!existsSync(file)) throw new CliError("no loadouts.json here", 2, "run loadouts init to initialize or migrate this project");
+  if (!existsSync(file)) throw new CliError("no loadouts.json here", 2, "run loadouts init to initialize this project");
   let value: unknown;
   try { value = JSON.parse(readFileSync(file, "utf8")); }
   catch { throw new CliError(`invalid JSON in ${file}`, 1, "repair loadouts.json, then run loadouts install"); }
@@ -62,84 +48,118 @@ export function readSourceFile(project: string, source: string): string {
 }
 export async function resolveManifest(project: string, manifest: Manifest, previous?: Lock, opts?: {update?: boolean; refreshLocal?: string[] | true}): Promise<Lock> {
   validateManifest(manifest);
-  const lock: Lock = {version: 3, harnesses: [...manifest.harnesses], catalog: null, loadouts: Object.create(null), installed: structuredClone(previous?.installed ?? {}), resolved: Object.create(null), ...(previous?.pending ? {pending: [...previous.pending]} : {}), ...(previous?.incomplete ? {incomplete: true} : {})};
-  if (previous?.packageSkills) { lock.version = 4; lock.packageSkills = structuredClone(previous.packageSkills); }
-  if (previous?.installers) { lock.version = 5; lock.installers = structuredClone(previous.installers); }
-  if (previous?.version === 6) lock.version = 6;
+  const lock: Lock = {version: 1, harnesses: [...manifest.harnesses], catalog: null, loadouts: Object.create(null), installed: structuredClone(previous?.installed ?? {}), resolved: Object.create(null), roots: Object.create(null), includes: Object.create(null), ...(previous?.pending ? {pending: [...previous.pending]} : {}), ...(previous?.incomplete ? {incomplete: true} : {})};
+  if (previous?.packageSkills) lock.packageSkills = structuredClone(previous.packageSkills);
+  if (previous?.installers) lock.installers = structuredClone(previous.installers);
   const catalogs = new Map<string, Promise<CatalogRef>>();
-  for (const [name, entry] of Object.entries(manifest.loadouts)) {
-    const parsed = parseSource(entry.source), old = previous?.resolved?.[name];
-    const same = old?.source === entry.source;
-    let loadout;
-    if (parsed.kind === "file") {
-      const current = readSourceFile(project, entry.source);
-      const refresh = opts?.refreshLocal === undefined || opts.refreshLocal === true || opts.refreshLocal.includes(name);
-      const yaml = same && !refresh && previous?.local?.[name] !== undefined ? previous.local[name]! : current;
-      loadout = parseLoadout(yaml, name + ".yml"); lock.local = {...lock.local, [name]: yaml};
-      lock.resolved![name] = {source: entry.source};
-    } else {
-      let catalog = same && !opts?.update ? old.catalog : undefined;
-      if (!catalog) {
-        const key = `${parsed.repo}@${parsed.ref ?? ""}`;
-        // Reuse an existing resolution when adding another entry from the same catalog.
-        catalog = !opts?.update ? Object.values(previous?.resolved ?? {}).find(r => r.catalog?.repo === parsed.repo && parseSource(r.source).kind === "catalog" && (parseSource(r.source) as Extract<ParsedSource, {kind: "catalog"}>).ref === parsed.ref)?.catalog : undefined;
-        if (!catalog) { if (!catalogs.has(key)) catalogs.set(key, openCatalog(parsed.repo, parsed.ref)); catalog = await catalogs.get(key)!; }
+  const selections = (entries: Record<string, LoadoutSelection>): Record<string, LoadoutSelection> => Object.fromEntries(Object.keys(entries).sort().map(name => {
+    const entry = entries[name]!;
+    return [name, {source: entry.source, ...(entry.choices && Object.keys(entry.choices).length ? {choices: Object.fromEntries(Object.keys(entry.choices).sort().map(g => [g, [...entry.choices![g]!].sort()]))} : {})}];
+  }));
+  lock.roots = selections(manifest.loadouts);
+  type Definition = {loadout: Loadout; resolved: NonNullable<Lock["resolved"]>[string]; yaml?: string};
+  const reads = new Map<string, Promise<Definition>>();
+  const read = (name: string, entry: LoadoutSelection): Promise<Definition> => {
+    if (!reads.has(entry.source)) reads.set(entry.source, (async () => {
+      const parsed = parseSource(entry.source);
+      const old = previous?.resolved[name];
+      const same = old?.source === entry.source;
+      let loadout: Loadout;
+      if (parsed.kind === "file") {
+        const current = readSourceFile(project, entry.source);
+        const refresh = opts?.refreshLocal === true || (Array.isArray(opts?.refreshLocal) ? opts.refreshLocal.includes(name) : !opts?.update);
+        const yaml = same && !refresh && previous?.local?.[name] !== undefined ? previous.local[name]! : current;
+        loadout = parseLoadout(yaml, name + ".yml");
+        return {loadout, resolved: {source: entry.source}, yaml};
+      } else {
+        let catalog = same && !opts?.update ? old.catalog : undefined;
+        if (!catalog) {
+          const key = `${parsed.repo}@${parsed.ref ?? ""}`;
+          // Reuse an existing resolution when adding another entry from the same catalog.
+          catalog = !opts?.update ? Object.values(previous?.resolved ?? {}).find(r => r.catalog?.repo === parsed.repo && parseSource(r.source).kind === "catalog" && (parseSource(r.source) as Extract<ParsedSource, {kind: "catalog"}>).ref === parsed.ref)?.catalog : undefined;
+          if (!catalog) { if (!catalogs.has(key)) catalogs.set(key, openCatalog(parsed.repo, parsed.ref)); catalog = await catalogs.get(key)!; }
+        }
+        loadout = await readLoadout(catalog, name);
+        return {loadout, resolved: {source: entry.source, catalog}};
       }
-      loadout = await readLoadout(catalog, name); lock.catalog ??= catalog;
-      lock.resolved![name] = {source: entry.source, catalog};
+    })());
+    return reads.get(entry.source)!;
+  };
+  type Occurrence = {selection: LoadoutSelection; path: string[]; locations: string[]};
+  type Node = {definition: Definition; choices: Choices; includes: Record<string, LoadoutSelection>; edges: ReturnType<typeof includeDeclarations>};
+  const canonical = (value: unknown): string => JSON.stringify(value, (_k, v) => object(v) ? Object.fromEntries(Object.keys(v).sort().map(k => [k, v[k]])) : v);
+  const where = (entry: Occurrence) => entry.path.join(" → ") + (entry.locations.length ? ` (${entry.locations.join(" → ")})` : "");
+  let prior = new Map<string, Node>(), previousState: string | undefined;
+  const seen = new Set<string>(), paths = new Set<string>();
+  for (;;) {
+    const incoming = new Map<string, Occurrence[]>(), cycles: string[] = [];
+    const gather = (name: string, occurrence: Occurrence, ancestry: string[]) => {
+      if (!incoming.has(name)) incoming.set(name, []);
+      incoming.get(name)!.push(occurrence);
+      paths.add(where(occurrence));
+      const key = occurrence.selection.source;
+      if (ancestry.includes(key)) { cycles.push(where(occurrence)); return; }
+      const node = prior.get(name);
+      if (node?.definition.resolved.source !== key) return;
+      for (const edge of node.edges) gather(edge.name, {selection: edge.selection, path: [...occurrence.path, edge.name], locations: [...occurrence.locations, `${name}.${edge.path}`]}, [...ancestry, key]);
+    };
+    for (const [name, selection] of Object.entries(lock.roots!)) gather(name, {selection, path: [name], locations: []}, []);
+    const next = new Map<string, Node>(), diagnostics: CliError[] = [];
+    for (const name of [...incoming.keys()].sort()) {
+      const occurrences = incoming.get(name)!.sort((a, b) => canonical(a).localeCompare(canonical(b)));
+      const first = occurrences[0]!;
+      try {
+        const different = occurrences.find(o => o.selection.source !== first.selection.source);
+        if (different) throw new CliError(`conflicting sources for ${name}: ${first.selection.source} (${where(first)}) and ${different.selection.source} (${where(different)})`, 1, "use the same full source for every declaration");
+        const requests: Choices = Object.create(null), origins = new Map<string, Occurrence>();
+        for (const occurrence of occurrences) for (const [group, members] of Object.entries(occurrence.selection.choices ?? {}).sort(([a], [b]) => a.localeCompare(b))) {
+          const sorted = [...members].sort(), earlier = origins.get(group);
+          if (earlier && canonical(requests[group]) !== canonical(sorted)) throw new CliError(`conflicting choices for ${name}/${group}: [${requests[group]!.join(", ")}] (${where(earlier)}) and [${sorted.join(", ")}] (${where(occurrence)})`, 1, "use the same explicit choices for every declaration");
+          requests[group] = sorted; origins.set(group, occurrence);
+        }
+        const definition = await read(name, first.selection), loadout = definition.loadout;
+        if (parseSource(first.selection.source).kind === "catalog") for (const edge of includeDeclarations(loadout)) {
+          if (parseSource(edge.selection.source).kind === "file") throw new CliError(`shared catalog cannot include consumer-local source ${edge.selection.source} (${first.path.concat(edge.name).join(" → ")}; ${name}.${edge.path})`, 1, "use an explicit shared catalog source");
+        }
+        // Distinguish removed selections from invalid new requests.
+        const declared = declaredItems(loadout);
+        for (const [group, members] of Object.entries(requests)) {
+          const item = declared[group];
+          if (item && "kind" in item) {
+            const missing = members.find(m => !Object.hasOwn(item.members, m));
+            if (missing) throw new CliError(`${name}/${group}: alternative ${missing} no longer exists`, previous?.loadouts[name]?.[group]?.includes(missing) ? 1 : 2, `choose from ${Object.keys(item.members).join(", ")}`);
+          }
+        }
+        const choices = Object.fromEntries(Object.entries(resolveChoices(loadout, requests)).sort(([a], [b]) => a.localeCompare(b)).map(([group, members]) => [group, [...members].sort()]));
+        next.set(name, {definition, choices, includes: selections(activeIncludes(loadout, choices)), edges: includeDeclarations(loadout, choices).sort((a, b) => a.path.localeCompare(b.path))});
+      } catch (error) {
+        diagnostics.push(new CliError(`${(error as Error).message} (${occurrences.map(where).join("; ")})`, error instanceof CliError ? error.code : 1, error instanceof CliError ? error.fix : "correct the included loadout"));
+      }
     }
-    const defaults = defaultChoices(loadout); let choices = {...defaults};
-    if (same) for (const [g, members] of Object.entries(previous!.loadouts[name] ?? {})) if (Object.hasOwn(defaults, g)) choices[g] = members;
-    choices = {...choices, ...entry.choices};
-    for (const [g, members] of Object.entries(choices)) {
-      const group = loadout.items[g];
-      if (!group || !("kind" in group)) throw new CliError(`unknown group ${name}/${g}`, 2, `correct choices in loadouts.json; run loadouts show ${name}`);
-      const missing = members.find(m => !Object.hasOwn(group.members, m));
-      if (missing) throw new CliError(`${name}/${g}: alternative ${missing} no longer exists`, previous?.loadouts[name]?.[g]?.includes(missing) ? 1 : 2, `choose from ${Object.keys(group.members).join(", ")} in loadouts.json`);
-      if ((group.kind === "one_of" && members.length !== 1) || new Set(members).size !== members.length) throw new CliError(`invalid choices for ${name}/${g}`, 2, `choose ${group.kind === "one_of" ? "exactly one of" : "from"}: ${Object.keys(group.members).join(", ")}`);
+    const state = canonical({incoming: Object.fromEntries(incoming), nodes: Object.fromEntries([...next].map(([name, node]) => [name, {choices: node.choices, includes: node.includes, edges: node.edges}])), diagnostics: diagnostics.map(d => [d.message, d.code]).sort(), cycles: cycles.sort()});
+    if (state === previousState) {
+      if (diagnostics.length) throw diagnostics[0];
+      if (cycles.length) throw new CliError(`loadout include cycle: ${cycles[0]}`, 1, "remove the cyclic include");
+      for (const [name, node] of next) {
+        for (const [child, selection] of Object.entries(node.includes)) if (next.get(child)?.definition.resolved.source !== selection.source) throw new CliError(`unresolved include ${name} → ${child}`, 1);
+        lock.loadouts[name] = node.choices; lock.includes![name] = node.includes; lock.resolved![name] = node.definition.resolved;
+        if (node.definition.yaml !== undefined) { lock.local ??= Object.create(null); lock.local![name] = node.definition.yaml; }
+      }
+      break;
     }
-    lock.loadouts[name] = choices;
+    if (seen.has(state)) throw new CliError(`conditional includes did not converge: ${[...paths].sort().join("; ")}`, 1, "remove self-invalidating conditional includes");
+    seen.add(state); previousState = state; prior = next;
   }
   lock.catalog = Object.values(lock.resolved!).find(r => r.catalog)?.catalog ?? previous?.catalog ?? null;
   return lock;
 }
 
-export function migrateProject(project: string, opts?: {dryRun?: boolean}): Manifest {
-  if (existsSync(join(project, "loadouts.json"))) return readManifest(project);
-  const lock = readLock(project);
-  const manifest: Manifest = {harnesses: [...lock.harnesses], loadouts: Object.create(null)};
-  const resolved: NonNullable<Lock["resolved"]> = Object.create(null);
-  for (const [name, choices] of Object.entries(lock.loadouts)) {
-    const source = lock.resolved?.[name]?.source ?? (Object.hasOwn(lock.local ?? {}, name) ? fileSource(name) : catalogSource(lock.catalog!.repo, name));
-    manifest.loadouts[name] = {source, choices};
-    resolved[name] = lock.resolved?.[name] ?? {source, ...(!Object.hasOwn(lock.local ?? {}, name) ? {catalog: lock.catalog!} : {})};
-  }
-  validateManifest(manifest);
-  if (opts?.dryRun) return manifest;
-  const root = join(project, ".loadouts"), destination = join(root, "catalog");
-  for (const path of [root, destination]) {
-    const stat = lstatSync(path, {throwIfNoEntry: false});
-    if (stat && (!stat.isDirectory() || stat.isSymbolicLink())) throw new CliError(`unsafe migration directory ${path}`, 1, "use ordinary directories for .loadouts and .loadouts/catalog");
-  }
-  const files = existsSync(root) ? readdirSync(root).filter(f => /^[\w.-]+\.yml$/.test(f)) : [];
-  for (const file of files) {
-    const from = join(root, file), to = join(destination, file), a = lstatSync(from), b = lstatSync(to, {throwIfNoEntry: false});
-    if (!a.isFile() || (b && (!b.isFile() || readFileSync(from, "utf8") !== readFileSync(to, "utf8")))) throw new CliError(`cannot migrate ${file}: unsafe file or conflicting destination`, 1, `resolve .loadouts/${file} and .loadouts/catalog/${file} without losing your edits, then rerun loadouts init`);
-  }
-  mkdirSync(destination, {recursive: true});
-  for (const file of files) {
-    const from = join(root, file), to = join(destination, file);
-    if (!existsSync(to)) copyFileSync(from, to, constants.COPYFILE_EXCL);
-    unlinkSync(from);
-  }
-  writeLock(project, {...lock, version: lock.version === 6 ? 6 : 3, resolved});
-  writeManifest(project, manifest);
-  return manifest;
-}
-
 export function manifestMatchesLock(manifest: Manifest, lock: Lock): boolean {
   const equal = (a: string[], b: string[]) => JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
-  return equal(manifest.harnesses, lock.harnesses) && equal(Object.keys(manifest.loadouts), Object.keys(lock.loadouts)) &&
-    Object.entries(manifest.loadouts).every(([name, entry]) => entry.source === lock.resolved?.[name]?.source &&
-      Object.entries(entry.choices ?? {}).every(([group, members]) => Object.hasOwn(lock.loadouts[name]!, group) && equal(members, lock.loadouts[name]![group]!)));
+  return equal(manifest.harnesses, lock.harnesses) && equal(Object.keys(manifest.loadouts), Object.keys(lock.roots!)) &&
+    Object.entries(manifest.loadouts).every(([name, entry]) => {
+      const applied = lock.roots![name]!;
+      return entry.source === applied.source && equal(Object.keys(entry.choices ?? {}), Object.keys(applied.choices ?? {})) &&
+        Object.entries(entry.choices ?? {}).every(([group, members]) => equal(members, applied.choices![group]!));
+    });
 }

@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { mkdirSync, writeFileSync, readFileSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tempEnv, fixtureCatalog, run, withEnv, git } from "./helpers";
 import { sync } from "../src/sync";
@@ -13,6 +13,49 @@ async function setup() {
   expect((await run(["add", "base", "frontend", "--catalog", catalog], opts)).code).toBe(0);
   return {...t, catalog, opts};
 }
+
+test("doctor checks active nested groups and container alternatives without scanning inactive languages", async () => {
+  const t = await setup();
+  writeFileSync(join(t.project, ".loadouts/catalog/testing.yml"), JSON.stringify({name: "testing", items: {
+    languages: {any_of: {
+      python: {items: {framework: {one_of: {chosen: {}, other: {items: {tool: {skills: ["acme/alternate@alternate"]}}}}, default: "chosen"}}},
+      typescript: {includes: {missing: {source: "file:./.loadouts/catalog/missing.yml"}}, items: {framework: {one_of: {chosen: {}, other: {skills: ["acme/inactive@inactive"]}}, default: "chosen"}}},
+    }, default: ["python"]},
+  }}));
+  expect((await run(["add", "file:./.loadouts/catalog/testing.yml"], t.opts)).code).toBe(0);
+  for (const [name, source] of [["alternate", "acme/alternate"], ["inactive", "acme/inactive"]]) {
+    const dir = join(t.home, ".agents/skills", name!); mkdirSync(dir, {recursive: true}); writeFileSync(join(dir, "SKILL.md"), "# skill"); writeFileSync(join(dir, ".source"), source!);
+  }
+  const before = readFileSync(join(t.project, "loadouts.lock.json"), "utf8"), result = await run(["doctor", "--json"], t.opts);
+  const findings = JSON.parse(result.stdout).findings; expect(findings).toHaveLength(1);
+  const conflicts = findings.filter((finding: any) => finding.kind === "conflict");
+  expect(conflicts).toHaveLength(1); expect(conflicts[0].message).toContain("testing/languages/python/framework"); expect(conflicts[0].message).not.toContain("typescript");
+  expect(readFileSync(join(t.project, "loadouts.lock.json"), "utf8")).toBe(before);
+});
+
+test("doctor ignores desired shared artifacts but detects exclusive inactive container artifacts", async () => {
+  const t = await setup();
+  writeFileSync(join(t.project, ".loadouts/catalog/shared.yml"), 'name: shared\nitems: {review: {skills: [acme/root-shared@root-shared]}}\n');
+  writeFileSync(join(t.project, ".loadouts/catalog/testing.yml"), JSON.stringify({name: "testing", items: {
+    languages: {any_of: {python: {items: {framework: {one_of: {
+      pytest: {items: {tools: {skills: ["acme/pytest@pytest", "acme/choice-shared@choice-shared", "acme/root-shared@root-shared"]}}},
+      unittest: {skills: ["acme/unittest@unittest", "acme/choice-shared@choice-shared"]},
+    }, default: "pytest"}}}}, default: ["python"]},
+  }}));
+  expect((await run(["add", "file:./.loadouts/catalog/testing.yml", "file:./.loadouts/catalog/shared.yml"], t.opts)).code).toBe(0);
+  expect((await run(["switch", "testing/languages/python/framework", "unittest"], t.opts)).code).toBe(0);
+  expect(existsSync(join(t.project, ".agents/skills/pytest/SKILL.md"))).toBe(false);
+  for (const key of ["skill:codex:acme/choice-shared@choice-shared", "skill:codex:acme/root-shared@root-shared"]) expect(Object.hasOwn(readLock(t.project).installed, key)).toBe(true);
+  const file = join(t.project, "loadouts.lock.json"), before = readFileSync(file, "utf8");
+  const clean = await run(["doctor", "--json"], t.opts);
+  expect(clean.code, clean.stderr + clean.stdout).toBe(0); expect(JSON.parse(clean.stdout).findings).toEqual([]);
+  const global = join(t.home, ".agents/skills/pytest"); mkdirSync(global, {recursive: true});
+  writeFileSync(join(global, "SKILL.md"), "# pytest\n"); writeFileSync(join(global, ".source"), "acme/pytest");
+  const conflict = await run(["doctor", "--json"], t.opts);
+  expect(conflict.code).toBe(1);
+  expect(JSON.parse(conflict.stdout).findings).toEqual([expect.objectContaining({kind: "conflict", message: "testing/languages/python/framework: non-selected alternative pytest is installed"})]);
+  expect(readFileSync(file, "utf8")).toBe(before);
+});
 test("doctor accepts unrelated inherited plugins, MCP servers and skills", async () => {
   const t = await setup();
   mkdirSync(join(t.home, ".claude")); writeFileSync(join(t.home, ".claude/settings.json"), '{"enabledPlugins":{"stray@x":true}}');

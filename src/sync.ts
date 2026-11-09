@@ -4,10 +4,10 @@ import { createInterface } from "node:readline";
 import type { ParsedCommand } from "./commands";
 import { CliError } from "./errors";
 import { paint } from "./output";
-import { readLock, writeLock, requireProject, type Lock } from "./lock";
+import { readLock, writeLock, requireProject, loadoutPaths, validateLockedLoadout, type Lock } from "./lock";
 import { readConfig, parseHarnesses } from "./config";
 import { readLoadout, openCatalog } from "./catalog";
-import { activeItems, artifactsFor, parseLoadout, type Loadout, type McpServer, type Group, type Harness } from "./loadout";
+import { activeItems, artifactsFor, declaredItems, includeDeclarations, resolveChoices, sourceFor, parseLoadout, type Loadout, type McpServer, type Group, type Harness } from "./loadout";
 import { ensureLocalCatalog } from "./local";
 import { installSkills, removeSkills, removeSkillLinks, missingSkills } from "./skills";
 import { checkMcp } from "./mcpcheck";
@@ -16,13 +16,17 @@ import { applyClaude } from "./claude";
 import { prepareCodexConfig, codexConfigPath, expandProject, ensureGitignore } from "./codex";
 import { renderSection, spliceSection, ensureClaudeImport } from "./agentsmd";
 import { writeIfChanged } from "./paths";
-import { readManifest, writeManifest, migrateProject, resolveManifest, catalogSource, parseSource, manifestMatchesLock, type Manifest } from "./manifest";
-import { syncPackageSkills, packageSkillStatus } from "./package-skills";
+import { readManifest, writeManifest, resolveManifest, catalogSource, parseSource, manifestMatchesLock, type Manifest } from "./manifest";
+import { syncPackageSkills, packageSkillStatus, selectsPackageSkill } from "./package-skills";
 import { syncCodexPlugins, codexPluginCachePresent } from "./codex-plugins";
 import { prepareInstallers, missingInstallerArtifacts, checkInstallerPrerequisites } from "./installers";
 
 export async function loadedLoadouts(lock: Lock): Promise<Record<string, Loadout>> {
-  return Object.fromEntries(await Promise.all(Object.keys(lock.loadouts).sort().map(async name => [name, Object.hasOwn(lock.local ?? {}, name) ? parseLoadout(lock.local![name]!, name + ".yml") : await readLoadout(lock.resolved?.[name]?.catalog ?? lock.catalog!, name)])));
+  return Object.fromEntries(await Promise.all(Object.keys(lock.loadouts).sort().map(async name => {
+    const loadout = Object.hasOwn(lock.local ?? {}, name) ? parseLoadout(lock.local![name]!, name + ".yml") : await readLoadout(lock.resolved?.[name]?.catalog ?? lock.catalog!, name);
+    validateLockedLoadout(lock, name, loadout);
+    return [name, loadout];
+  })));
 }
 function validateChoice(name: string, group: Group, members: string[]): void {
   if ((group.kind === "one_of" && members.length !== 1) || new Set(members).size !== members.length || members.some(m => !Object.hasOwn(group.members, m))) {
@@ -31,15 +35,43 @@ function validateChoice(name: string, group: Group, members: string[]): void {
 }
 export function desired(lock: Lock, loadouts: Record<string, Loadout>): Map<string, {itemId: string; mcp: McpServer | null}> {
   const result = new Map<string, {itemId: string; mcp: McpServer | null}>();
-  for (const [name, choices] of Object.entries(lock.loadouts)) {
-    const l = loadouts[name]!;
-    for (const [g, item] of Object.entries(l.items)) if ("kind" in item) validateChoice(`${name}/${g}`, item, choices[g] ?? item.default);
-    for (const key of Object.keys(choices)) if (!l.items[key] || !("kind" in l.items[key]!)) throw new CliError(`unknown group ${name}/${key}`, 2, "run loadouts show " + name);
-    for (const a of activeItems(l, choices)) for (const h of lock.harnesses) for (const [key, mcp] of artifactsFor(a, h)) {
-      const previous = result.get(key);
-      const stable = (v: any): string => JSON.stringify(v, (_k, x) => x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map(k => [k, x[k]])) : x);
-      if (previous && stable(previous.mcp) !== stable(mcp)) throw new CliError(`conflicting ${key} definitions from ${previous.itemId} and ${a.id}`, 1, "give the servers different names or identical definitions in the catalog");
-      result.set(key, {itemId: a.id, mcp});
+  const stable = (v: unknown): string => JSON.stringify(v, (_k, x) => x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map(k => [k, x[k]])) : x);
+  const origin = (itemId: string) => {
+    const name = itemId.split("/")[0]!;
+    return `${itemId} (${loadoutPaths(lock, name).map(path => path.join(" → ")).join("; ")})`;
+  };
+  const conflict = (key: string, left: {itemId: string; value: unknown}, right: {itemId: string; value: unknown}) => {
+    throw new CliError(`conflicting ${key} definitions from ${origin(left.itemId)}: ${stable(left.value)} and ${origin(right.itemId)}: ${stable(right.value)}`, 1, "use identical definitions or distinct component names in the loadouts");
+  };
+  const claims = new Map<string, {itemId: string; value: string}>();
+  const claim = (key: string, itemId: string, value: string) => {
+    const previous = claims.get(key);
+    if (previous && previous.value !== value) conflict(key, previous, {itemId, value});
+    if (!previous) claims.set(key, {itemId, value});
+  };
+  for (const name of Object.keys(lock.loadouts).sort()) {
+    const choices = lock.loadouts[name]!, l = loadouts[name]!;
+    for (const a of activeItems(l, choices).sort((a, b) => a.id.localeCompare(b.id))) for (const h of lock.harnesses) {
+      const source = sourceFor(a.item, h);
+      // Skill folders are shared across harnesses; only explicit names are knowable before discovery.
+      for (const identifier of source.skills ?? []) {
+        const [repo, skill] = identifier.split("@");
+        if (skill) claim(`skill:${skill}`, a.id, `github:${repo}`);
+      }
+      for (const selector of source.packageSkills?.include ?? []) {
+        const [pkg, skill] = selector.split("#");
+        if (skill && selectsPackageSkill(source.packageSkills!, pkg!, skill)) claim(`skill:${skill}`, a.id, `package:${pkg}`);
+      }
+      if (source.installer) claim("skill:codebase-memory", a.id, "installer:codebase-memory");
+      for (const [key, mcp] of artifactsFor(a, h)) {
+        if (key.startsWith("marketplace:") || key.startsWith("codex-marketplace:")) {
+          const [kind, namespace, repo] = key.split(":");
+          claim(`${kind}:${namespace}`, a.id, repo!);
+        }
+        const previous = result.get(key);
+        if (previous && stable(previous.mcp) !== stable(mcp)) conflict(key, {itemId: previous.itemId, value: previous.mcp}, {itemId: a.id, value: mcp});
+        if (!previous) result.set(key, {itemId: a.id, mcp});
+      }
     }
   }
   return result;
@@ -57,7 +89,6 @@ export function missingArtifacts(project: string, lock: Lock): string[] {
     return configs.get(file);
   };
   const codex = ".codex/config.toml";
-  if (lock.harnesses.includes("codex") && lock.version < 6) missing.add("legacy Codex layout (run loadouts install)");
   if (lock.harnesses.includes("codex")) config(codex);
   for (const file of [...(Object.keys(lock.loadouts).length ? ["AGENTS.md"] : []), ...(lock.harnesses.includes("claude-code") ? ["CLAUDE.md"] : [])]) {
     try { if (!statSync(join(project, file)).isFile()) missing.add(file); }
@@ -97,10 +128,9 @@ export async function sync(project: string, lock: Lock, opts?: {check?: boolean;
     if (entries !== undefined && (!entries || typeof entries !== "object" || Array.isArray(entries))) throw new CliError(`invalid ${field} in ${file}`, 1, `make ${field} a JSON object, then rerun`);
     if (!owned && Object.hasOwn(entries ?? {}, name)) throw new CliError(`${name} already exists in ${file} and is not managed by loadouts`, 1, `rename or remove the conflicting entry in ${file}, then rerun`);
   }
+  const previousLock = existsSync(join(project, "loadouts.lock.json")) ? readLock(project) : null;
   const nativeConfig = lock.harnesses.includes("codex") || existsSync(codexConfigPath(project)) ? prepareCodexConfig(project, lock, want) : null;
   const applyInstallers = await prepareInstallers(project, lock, [...want.keys()]);
-  const legacy = lock.version < 6;
-  const previousLock = existsSync(join(project, "loadouts.lock.json")) ? readLock(project) : null;
   let previous: ReturnType<typeof desired> | null = null, checkRetained = false;
   const changed = previousLock && (JSON.stringify(previousLock.resolved) !== JSON.stringify(lock.resolved) || previousLock.catalog?.commit !== lock.catalog?.commit || JSON.stringify(previousLock.local) !== JSON.stringify(lock.local));
   if (changed && [...want.keys()].some(k => k.startsWith("mcp:") && !added.includes(k))) {
@@ -116,14 +146,10 @@ export async function sync(project: string, lock: Lock, opts?: {check?: boolean;
     if (!check.ok) throw new CliError(`MCP server ${key.split(":")[2]} (${itemId}) is not reachable: ${check.reason}`, 1, "fix the server definition in the catalog or pick another alternative with --with");
   }
   const clearPending = (key: string) => { if (lock.pending) { lock.pending = lock.pending.filter(k => k !== key); if (!lock.pending.length) delete lock.pending; } };
+  const written = opts?.beforeApply?.();
+  if (written) files.push(written);
   try {
-    const written = opts?.beforeApply?.();
-    if (written) files.push(written);
     lock.incomplete = true;
-    if (legacy) {
-      for (const key of [...Object.keys(lock.installed), ...lock.pending ?? []]) if ((key.startsWith("codex-") || key.startsWith("mcp:codex:")) && !want.has(key)) { delete lock.installed[key]; clearPending(key); }
-    }
-    lock.version = 6;
     const configChanged = nativeConfig !== null && (!existsSync(codexConfigPath(project)) || readFileSync(codexConfigPath(project), "utf8") !== nativeConfig);
     if (configChanged) {
       for (const key of want.keys()) {
@@ -189,7 +215,7 @@ export async function sync(project: string, lock: Lock, opts?: {check?: boolean;
   return {added, removed, files: uniqueFiles};
 }
 export async function install(project: string, opts?: {manifest?: Manifest; update?: boolean; refreshLocal?: string[] | true}): Promise<void> {
-  const manifest = opts?.manifest ?? (existsSync(join(project, "loadouts.json")) ? readManifest(project) : migrateProject(project));
+  const manifest = opts?.manifest ?? readManifest(project);
   const previous = existsSync(join(project, "loadouts.lock.json")) ? readLock(project) : undefined;
   const lock = await resolveManifest(project, manifest, previous, opts);
   if (opts?.update) for (const [name, entry] of Object.entries(lock.resolved ?? {})) {
@@ -207,13 +233,15 @@ export async function projectCommand(command: string, args: ParsedCommand): Prom
     const {harnesses, catalog, loadouts, installed} = previous ?? {harnesses: manifest!.harnesses, catalog: null, loadouts: {}, installed: {}};
     const needsInstall = !previous || !!previous.incomplete || !!previous.pending?.length || !manifest || !manifestMatchesLock(manifest, previous) || missingArtifacts(project, previous).length > 0;
     const sources = Object.fromEntries(Object.keys(loadouts).map(name => [name, Object.hasOwn(previous?.local ?? {}, name) ? "local" : "catalog"]));
-    if (values.json) console.log(JSON.stringify({harnesses, catalog, loadouts, installed, sources, manifest, ...(previous?.packageSkills ? {packageSkills: previous.packageSkills, missingPackages: packageSkillStatus(project, previous).missing} : {}), ...(previous?.incomplete ? {incomplete: true} : {}), ...(needsInstall ? {needsInstall: true} : {})}, null, 2));
+    if (values.json) console.log(JSON.stringify({harnesses, catalog, loadouts, installed, sources, manifest, ...(previous?.roots ? {roots: previous.roots, includes: previous.includes} : {}), ...(previous?.packageSkills ? {packageSkills: previous.packageSkills, missingPackages: packageSkillStatus(project, previous).missing} : {}), ...(previous?.incomplete ? {incomplete: true} : {}), ...(needsInstall ? {needsInstall: true} : {})}, null, 2));
     else {
       const names = [...new Set([...Object.keys(manifest?.loadouts ?? {}), ...Object.keys(loadouts)])].sort();
       const rows = names.flatMap(name => {
-        const declared = manifest?.loadouts[name], applied = previous?.resolved?.[name];
+        const declared = manifest && Object.hasOwn(manifest.loadouts, name) ? manifest.loadouts[name] : undefined, applied = previous?.resolved?.[name];
+        const parents = Object.entries(previous?.includes ?? {}).filter(([, edges]) => Object.hasOwn(edges, name)).map(([parent]) => parent);
         return [
-          `  ${paint(name, "blue")}  ${paint(declared?.source ?? "not declared", "dim")}`,
+          `  ${paint(name, "blue")}  ${paint(declared?.source ?? (parents.length ? applied?.source ?? sources[name]! : "not declared"), "dim")}${previous?.roots ? ` [${declared ? "direct" : parents.length ? "included" : "not declared"}]` : ""}`,
+          ...(parents.length ? [`    required by: ${parents.join(", ")}`] : []),
           ...Object.hasOwn(loadouts, name) ? [
             ...(applied?.source !== declared?.source ? [`    applied source: ${applied?.source ?? sources[name]}`] : []),
             ...Object.entries(loadouts[name]!).map(([group, members]) => `    ${group}: ${members.join(", ") || "none"}`),
@@ -234,8 +262,20 @@ export async function projectCommand(command: string, args: ParsedCommand): Prom
     }
     return 0;
   }
-  const manifest = migrateProject(project, {dryRun: command === "add"});
+  const manifest = readManifest(project);
   const refreshLocal: string[] = [];
+  const removedChoices: string[] = [];
+  const guardIncluded = async (name: string) => {
+    if (!Object.hasOwn(manifest.loadouts, name) && previous?.includes && Object.values(previous.includes).some(edges => Object.hasOwn(edges, name))) {
+      const paths = loadoutPaths(previous!, name).map(path => path.join(" → ")).join("; ");
+      const loaded = await loadedLoadouts(previous!);
+      const locations = Object.entries(loaded).flatMap(([owner, definition]) => {
+        const declarations = includeDeclarations(definition, previous!.loadouts[owner]!);
+        return declarations.filter(declaration => declaration.name === name).map(declaration => `${owner}: ${declaration.path}.choices`);
+      });
+      throw new CliError(`${name} is included and required by ${paths}`, 2, `edit the declaring parent ${locations.join("; ")}, or add the same source directly: loadouts add ${previous!.resolved![name]!.source}; remove the parent include to release this node`);
+    }
+  };
   if (command === "add") {
     const original = manifest.loadouts;
     const spec = values.catalog as string | undefined;
@@ -251,7 +291,7 @@ export async function projectCommand(command: string, args: ParsedCommand): Prom
     }
     for (const spec of (values.with ?? []) as string[]) {
       const match = /^([^/]+)\/([^=]+)=(.*)$/.exec(spec);
-      if (!match) throw new CliError(`invalid --with ${spec}`, 2, "use --with loadout/group=member[,member]");
+      if (!match) throw new CliError(`invalid --with ${spec}`, 2, "use --with loadout/path/to/group=member[,member]");
       const [, name, group, chosen] = match;
       if (!Object.hasOwn(manifest.loadouts, name!)) throw new CliError(`loadout ${name} is not selected`, 2, `run loadouts add ${name}`);
       const entry = manifest.loadouts[name!]!; entry.choices = {...entry.choices, [group!]: chosen ? chosen.split(",") : []};
@@ -274,29 +314,40 @@ export async function projectCommand(command: string, args: ParsedCommand): Prom
         if (!confirmed) throw new CliError("source replacement cancelled", 1);
       }
     }
-    migrateProject(project);
   } else if (command === "remove") {
+    await guardIncluded(positionals[0]!);
     delete manifest.loadouts[positionals[0]!];
   } else if (command === "harness") {
     const [action, name] = positionals, hs = parseHarnesses(name!);
     if (hs.length !== 1 || !["add", "remove"].includes(action!)) throw new CliError("invalid harness operation", 2, "use loadouts harness add|remove <harness>");
     manifest.harnesses = action === "add" ? [...new Set([...manifest.harnesses, hs[0]!])] : manifest.harnesses.filter(h => h !== hs[0]);
   } else {
-    const [path, member] = positionals, [name, g, extra] = path!.split("/");
-    if (!g || extra || !Object.hasOwn(manifest.loadouts, name!)) throw new CliError(`unknown loaded group ${path}`, 2, "run loadouts status");
+    const [path, member] = positionals, slash = path!.indexOf("/");
+    const name = path!.slice(0, slash), g = path!.slice(slash + 1);
+    if (slash > 0 && g) await guardIncluded(name);
+    if (slash < 1 || !g || !Object.hasOwn(manifest.loadouts, name)) throw new CliError(`unknown loaded group ${path}`, 2, "run loadouts status");
     const lock = await resolveManifest(project, manifest, previous, {refreshLocal: []});
-    const group = (await loadedLoadouts(lock))[name!]!.items[g];
+    const definition = (await loadedLoadouts(lock))[name]!;
+    const group = declaredItems(definition)[g];
     if (!group || !("kind" in group)) throw new CliError(`unknown group ${path}`, 2, `run loadouts show ${name}`);
+    if (!Object.hasOwn(lock.loadouts[name]!, g)) resolveChoices(definition, {...lock.loadouts[name]!, [g]: [member!]});
     if ((command === "switch") !== (group.kind === "one_of")) throw new CliError(`wrong command for ${group.kind} group ${path}`, 2, group.kind === "one_of" ? "use loadouts switch" : "use loadouts enable|disable");
     if (!Object.hasOwn(group.members, member!)) throw new CliError(`unknown member ${member}`, 2, `choose one of: ${Object.keys(group.members).join(", ")}`);
     const current = lock.loadouts[name!]![g] ?? group.default;
     const members = command === "switch" ? [member!] : command === "enable" ? [...new Set([...current, member!])] : current.filter(m => m !== member);
     validateChoice(path!, group, members);
-    manifest.loadouts[name!]!.choices = {...manifest.loadouts[name!]!.choices, [g]: members};
+    const choices = {...manifest.loadouts[name]!.choices, [g]: members};
+    const deselected = current.filter(member => !members.includes(member));
+    for (const key of Object.keys(choices)) if (deselected.some(member => key.startsWith(`${g}/${member}/`))) {
+      delete choices[key]; removedChoices.push(`${name}/${key}`);
+    }
+    manifest.loadouts[name]!.choices = choices;
   }
-  await install(project, {manifest, refreshLocal}); return 0;
+  await install(project, {manifest, refreshLocal});
+  if (removedChoices.length) console.log(`Removed inactive descendant requests: ${removedChoices.join(", ")}.`);
+  return 0;
 }
 
 export async function update(project: string): Promise<void> {
-  await install(project, {manifest: migrateProject(project), update: true, refreshLocal: []});
+  await install(project, {manifest: readManifest(project), update: true, refreshLocal: []});
 }

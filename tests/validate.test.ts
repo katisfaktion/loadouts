@@ -33,3 +33,22 @@ test("validate reports missing files and wrong argument counts", async () => {
     const r = await run(args); expect(r.code).toBe(2); expect(r.stderr).toContain("loadouts help validate");
   }
 });
+
+test("validate accepts unresolved includes offline without Git or installers", async () => {
+  const t = tempEnv(), file = join(t.project, "draft.yml");
+  const yaml = 'name: draft\nincludes: {testing: {source: "github:nonexistent/catalog/testing@v1.0.0", choices: {tools: []}}}\n';
+  writeFileSync(file, yaml);
+  const result = await run(["validate", file], {cwd: t.project, env: {...t.env, PATH: ""}});
+  expect(result.code).toBe(0); expect(result.stdout).toContain("Valid loadout: draft");
+  expect(readdirSync(t.project)).toEqual(["draft.yml"]); expect(readdirSync(t.home)).toEqual([]);
+  expect(readFileSync(file, "utf8")).toBe(yaml);
+});
+
+test("validate accepts nested member includes offline", async () => {
+  const t = tempEnv(), file = join(t.project, "draft.yml");
+  const yaml = 'name: draft\nitems: {framework: {one_of: {react: {includes: {react: {source: "github:missing/catalog/react", choices: {"tools/testing": []}}}}}, default: react}}\n';
+  writeFileSync(file, yaml);
+  const result = await run(["validate", file], {cwd: t.project, env: {...t.env, PATH: ""}});
+  expect(result.code).toBe(0); expect(readdirSync(t.home)).toEqual([]);
+  expect(readFileSync(file, "utf8")).toBe(yaml);
+});

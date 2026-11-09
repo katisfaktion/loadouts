@@ -3,7 +3,8 @@
   "title": "Loadout",
   "description": "A loadouts catalog entry. The CLI additionally checks filename agreement, default member names and routing targets.",
   "type": "object",
-  "required": ["name", "items"],
+  "required": ["name"],
+  "anyOf": [{"required": ["items"]}, {"required": ["includes"], "properties": {"includes": {"minProperties": 1}}}],
   "additionalProperties": false,
   "properties": {
     "name": {
@@ -12,6 +13,11 @@
       "description": "Must match the .yml filename without its extension."
     },
     "conventions": { "$ref": "#/definitions/text" },
+    "includes": {
+      "type": "object",
+      "propertyNames": {"$ref": "#/definitions/selectionIdentifier"},
+      "additionalProperties": {"$ref": "#/definitions/selection"}
+    },
     "items": {
       "type": "object",
       "propertyNames": { "$ref": "#/definitions/identifier" },
@@ -35,7 +41,7 @@
             "type": "array",
             "items": {
               "type": "string",
-              "pattern": "^(?:(?:skill|mcp|plugin):)?[A-Za-z0-9_.-]+$",
+              "pattern": "^(?:[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*|(?:skill|mcp|plugin):[A-Za-z0-9_.-]+)$",
               "description": "A declared item or group key, or skill:name, mcp:name or plugin:name."
             }
           }
@@ -44,6 +50,21 @@
     }
   },
   "definitions": {
+    "selectionIdentifier": {"type": "string", "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]*$"},
+    "selection": {
+      "type": "object",
+      "required": ["source"],
+      "additionalProperties": false,
+      "properties": {
+        "source": {"type": "string", "pattern": "^(?:file:\\./\\.loadouts/catalog/[A-Za-z0-9_-][A-Za-z0-9_.-]*\\.yml|github:[A-Za-z0-9_-][\\w.-]*/[A-Za-z0-9_-][\\w.-]*/[A-Za-z0-9_-][\\w.-]*(?:@[^\\s@#]+)?|file:/[^#@]+#[A-Za-z0-9_-][\\w.-]*(?:@[^\\s@#]+)?)$"},
+        "choices": {
+          "type": "object",
+          "propertyNames": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*$"},
+          "additionalProperties": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/definitions/selectionIdentifier"}}
+        }
+      }
+    },
+
     "text": { "type": "string", "minLength": 1 },
     "identifier": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+$" },
     "packageSkills": {
@@ -138,6 +159,8 @@
         "packageSkills": { "$ref": "#/definitions/packageSkills" },
         "mcp": { "$ref": "#/definitions/mcp" },
         "conventions": { "$ref": "#/definitions/text" },
+        "items": { "$ref": "#/properties/items" },
+        "includes": { "$ref": "#/properties/includes" },
         "claude": { "$ref": "#/definitions/claudeSource", "description": "Overrides common source fields for Claude Code." },
         "codex": { "$ref": "#/definitions/codexSource", "description": "Overrides common source fields for Codex. Plugins require an explicit marketplace repository." }
       }

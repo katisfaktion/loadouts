@@ -57,7 +57,7 @@ test("inspect resolves installed skill sources without treating stale locks or g
   put(join(t.home, ".agents/.skill-lock.json"), {version: 3, skills: {global: {source: "acme/global", sourceType: "github"}}});
   put(join(t.project, ".codex/skills/fallback/SKILL.md"), "# fallback");
   put(join(t.project, ".codex/skills/ambiguous/SKILL.md"), "# ambiguous");
-  put(join(t.project, "loadouts.lock.json"), {version: 2, harnesses: ["codex"], catalog: null, loadouts: {}, installed: {"skill:codex:acme/fallback@fallback": ["fallback"], "skill:codex:acme/one": ["ambiguous"], "skill:codex:acme/two": ["ambiguous"]}});
+  put(join(t.project, "loadouts.lock.json"), {version: 1, roots: {}, includes: {}, resolved: {}, harnesses: ["codex"], catalog: null, loadouts: {}, installed: {"skill:codex:acme/fallback@fallback": ["fallback"], "skill:codex:acme/one": ["ambiguous"], "skill:codex:acme/two": ["ambiguous"]}});
   const r = await run(["inspect", "--json"], options(t));
   expect(r.code).toBe(0);
   const {skills} = JSON.parse(r.stdout);

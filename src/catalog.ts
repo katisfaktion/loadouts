@@ -8,9 +8,9 @@ export interface CatalogRef { repo: string; ref: string; commit: string }
 function catalogPath(repo: string): string {
   return join(cacheDir(), "catalogs", repo.replaceAll("/", "__"));
 }
-async function git(args: string[]): Promise<string> {
+async function git(args: string[], env: Record<string, string> = {}): Promise<string> {
   if (!Bun.which("git")) throw new CliError("git not found on PATH", 3, "install git, then rerun");
-  const child = Bun.spawn(["git", ...args], { stdout: "pipe", stderr: "pipe", env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } });
+  const child = Bun.spawn(["git", ...args], { stdout: "pipe", stderr: "pipe", env: { ...process.env, GIT_TERMINAL_PROMPT: "0", ...env } });
   const [code, out, err] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
   if (code) throw new CliError(`catalog git operation failed: ${err.trim()}`, 1, "check the catalog path, ref and Git access, then rerun");
   return out.trim();
@@ -38,6 +38,12 @@ export async function listLoadouts(c: CatalogRef): Promise<string[]> {
 }
 export async function readLoadout(c: CatalogRef, name: string): Promise<Loadout> {
   return parseLoadout(await readLoadoutYaml(c, name), `loadouts/${name}.yml`);
+}
+export async function readCachedLoadout(c: CatalogRef, name: string): Promise<Loadout> {
+  let yaml: string;
+  try { yaml = await git(["-C", catalogPath(c.repo), "show", `${c.commit}:loadouts/${name}.yml`], {GIT_NO_LAZY_FETCH: "1"}); }
+  catch { throw new CliError(`cached definition for ${name} at ${c.commit} is unavailable`, 1, "run loadouts install to restore the pinned catalog cache, then verify before publishing"); }
+  return parseLoadout(yaml, `loadouts/${name}.yml`);
 }
 export async function readLoadoutYaml(c: CatalogRef, name: string): Promise<string> {
   const names = await listLoadouts(c);

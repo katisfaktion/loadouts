@@ -26,7 +26,7 @@ test("local-only application works offline and requires explicit reapplication o
   writeFileSync(file, "name: pipeline\nitems: {}\nconventions: first definition\n");
   expect((await run(["add", "file:./.loadouts/catalog/pipeline.yml"], opts)).code).toBe(0);
   const lockFile = join(t.project, "loadouts.lock.json"), before = JSON.parse(readFileSync(lockFile, "utf8"));
-  expect(before.version).toBe(6); expect(before.catalog).toBeNull(); expect(before.local.pipeline).toBe(readFileSync(file, "utf8"));
+  expect(before.version).toBe(1); expect(before.catalog).toBeNull(); expect(before.local.pipeline).toBe(readFileSync(file, "utf8"));
   writeFileSync(file, "name: pipeline\nitems: {}\nconventions: edited definition\n");
   expect((await run(["harness", "add", "codex"], opts)).code).toBe(0);
   expect(readFileSync(join(t.project, "AGENTS.md"), "utf8")).toContain("first definition");
@@ -93,17 +93,15 @@ test("changed local MCP preflight fails without modifying the applied snapshot",
   expect(readFileSync(join(t.project, ".mcp.json"), "utf8")).toBe(mcp);
 });
 
-test("version-1 locks remain readable; malformed local snapshots are rejected", async () => {
+test("release locks reject malformed local snapshots", async () => {
   const t = tempEnv(), opts = {cwd: t.project, env: t.env};
-  await run(["setup", "--catalog", "/missing-catalog", "--harness", "claude-code"], opts);
-  const file = join(t.project, "loadouts.lock.json");
-  const old = {version: 1, harnesses: ["claude-code"], catalog: null, loadouts: {}, installed: {}};
-  writeFileSync(file, JSON.stringify(old));
-  expect((await run(["status"], opts)).code).toBe(0);
+  await run(["init", "--harness", "claude-code"], opts);
   await run(["create", "draft"], opts);
   expect((await run(["add", "file:./.loadouts/catalog/draft.yml"], opts)).code).toBe(0);
-  expect(JSON.parse(readFileSync(file, "utf8")).version).toBe(6);
-  writeFileSync(file, JSON.stringify({...old, version: 2, loadouts: {draft: {}}, local: {draft: "name: wrong\nitems: {}"}}));
+  const file = join(t.project, "loadouts.lock.json"), lock = JSON.parse(readFileSync(file, "utf8"));
+  expect(lock.version).toBe(1);
+  lock.local.draft = "name: wrong\nitems: {}";
+  writeFileSync(file, JSON.stringify(lock));
   expect((await run(["status"], opts)).code).toBe(1);
 });
 
@@ -277,4 +275,31 @@ test("doctor retains local findings when selected shared definitions are unavail
   expect(findings.some((f: any) => f.message.includes("Cannot check applied definitions"))).toBe(true);
   expect(readFileSync(lockFile, "utf8")).toBe(before);
   expect(readFileSync(file, "utf8")).toBe("name: draft\nitems: [invalid]\n");
+});
+
+test("create normalizes nested internal groups and preserves member includes", async () => {
+  const t = tempEnv(), catalog = fixtureCatalog(), opts = {cwd: t.project, env: t.env};
+  mkdirSync(join(t.project, ".git"));
+  const value = {name: "nested", items: {container: {conventions: "Keep parent", items: {language: {kind: "one_of", members: {python: {includes: {testing: {source: "github:acme/catalog/testing"}}, items: {extras: {kind: "any_of", members: {coverage: {}}, default: []}}}}, default: ["python"]}}}}};
+  writeFileSync(join(catalog, "loadouts/nested.yml"), Bun.YAML.stringify(value));
+  git(catalog, "add", "."); git(catalog, "commit", "-m", "Nested normalized fixture"); git(catalog, "tag", "v1.1.0");
+  expect((await run(["setup", "--catalog", catalog, "--harness", "codex"], opts)).code).toBe(0);
+  const result = await run(["create", "custom", "--from", "nested"], opts);
+  expect(result.code, result.stderr).toBe(0);
+  expect(Bun.YAML.parse(readFileSync(join(t.project, ".loadouts/catalog/custom.yml"), "utf8"))).toEqual({name: "custom", items: {container: {conventions: "Keep parent", items: {language: {one_of: {python: {includes: {testing: {source: "github:acme/catalog/testing"}}, items: {extras: {any_of: {coverage: {}}, default: []}}}}, default: "python"}}}}});
+});
+test.each([
+  ["name: compose\nincludes: {testing: {source: 'github:acme/catalog/testing'}}", true],
+  ["name: wrong\nitems: {}", false],
+  ["name: compose\nitems: {x: &cycle {items: {again: *cycle}}}", false],
+])("create handles includes-only and rejects bad source names or aliases: %s", async (yaml, valid) => {
+  const t = tempEnv(), catalog = fixtureCatalog(), opts = {cwd: t.project, env: t.env};
+  mkdirSync(join(t.project, ".git"));
+  writeFileSync(join(catalog, "loadouts/compose.yml"), yaml);
+  git(catalog, "add", "."); git(catalog, "commit", "-m", "Create boundary fixture"); git(catalog, "tag", "v1.1.0");
+  expect((await run(["setup", "--catalog", catalog, "--harness", "codex"], opts)).code).toBe(0);
+  const result = await run(["create", "custom", "--from", "compose"], opts);
+  expect(result.code === 0, result.stderr).toBe(valid);
+  expect(existsSync(join(t.project, ".loadouts/catalog/custom.yml"))).toBe(valid);
+  if (valid) expect(Bun.YAML.parse(readFileSync(join(t.project, ".loadouts/catalog/custom.yml"), "utf8"))).toEqual({name: "custom", includes: {testing: {source: "github:acme/catalog/testing"}}});
 });

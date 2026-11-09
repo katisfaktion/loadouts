@@ -4,10 +4,11 @@ import { join } from "node:path";
 import { CliError } from "./errors";
 import { readConfig } from "./config";
 import { readManifest, manifestMatchesLock, fileSource } from "./manifest";
-import { readLock } from "./lock";
+import { readLock, loadoutClosure, loadoutPaths, validateLockedLoadout } from "./lock";
+import { readCachedLoadout } from "./catalog";
 import { missingArtifacts } from "./sync";
 import { readLocal } from "./local";
-import { activeItems, artifactsFor, parseLoadout } from "./loadout";
+import { activeItems, artifactsFor, includeDeclarations, parseLoadout } from "./loadout";
 
 export async function publish(project: string, name: string, opts: {summary: string; catalog?: string; yes?: boolean}): Promise<string> {
   if (!opts.summary?.trim()) throw new CliError("verification summary is required", 2, "use --summary to describe how this loadout was verified in your project");
@@ -16,13 +17,24 @@ export async function publish(project: string, name: string, opts: {summary: str
   const loadout = parseLoadout(yaml, name + ".yml"), lock = readLock(project);
   if (!existsSync(join(project, "loadouts.json")) || !manifestMatchesLock(readManifest(project), lock)) throw new CliError("loadouts.json does not match the applied setup", 1, "run loadouts install and verify the result before publishing");
   if (lock.resolved?.[name]?.source !== fileSource(name) || !Object.hasOwn(lock.local ?? {}, name) || lock.local![name] !== yaml) throw new CliError(`${name} has not been applied with its current contents`, 1, `run loadouts add ${fileSource(name)} and verify the result before publishing`);
-  const keys = new Set(activeItems(loadout, lock.loadouts[name]!).flatMap(item => lock.harnesses.flatMap(h => [...artifactsFor(item, h).keys()])));
+  const closure = loadoutClosure(lock, name);
+  for (const node of closure) if (Object.hasOwn(lock.local ?? {}, node) && readLocal(project, node) !== lock.local![node]) throw new CliError(`${loadoutPaths(lock, node).map(path => path.join(" → ")).join(", ")} has not been applied with its current contents`, 1, "run loadouts install and verify the result before publishing");
+  const nonportable = closure.filter(node => node !== name && !lock.resolved![node]!.source.startsWith("github:"));
+  if (nonportable.length) throw new CliError(`publication requires portable dependencies:\n${nonportable.flatMap(node => loadoutPaths(lock, node).map(path => `${path.join(" → ")}: ${lock.resolved![node]!.source}`)).join("\n")}`, 1, "publish local dependencies first, replace their includes with available github: sources, then run loadouts install and verify before publishing");
+  const keys = new Set<string>();
+  for (const node of closure) {
+    const definition = node === name ? loadout : await readCachedLoadout(lock.resolved![node]!.catalog!, node);
+    validateLockedLoadout(lock, node, definition);
+    const declarations = includeDeclarations(definition).filter(({selection}) => !selection.source.startsWith("github:"));
+    if (declarations.length) throw new CliError(`publication requires portable dependencies:\n${declarations.map(({path, selection}) => `${loadoutPaths(lock, node).map(chain => chain.join(" → ")).join("; ")}: ${path}: ${selection.source}`).join("\n")}`, 1, "publish local dependencies first and use portable github: sources in every include declaration, including inactive branches");
+    for (const item of activeItems(definition, lock.loadouts[node]!)) for (const harness of lock.harnesses) for (const key of artifactsFor(item, harness).keys()) keys.add(key);
+  }
   if (missingArtifacts(project, lock).length) throw new CliError("project artifacts are missing, disabled or unreadable", 1, "run loadouts install and verify the result before publishing");
   if (lock.incomplete || lock.pending?.some(key => keys.has(key)) || [...keys].some(key => !Object.hasOwn(lock.installed, key))) throw new CliError("project reconciliation is incomplete", 1, "run loadouts install successfully before publishing");
   const target = opts.catalog ?? lock.catalog?.repo ?? readConfig().catalog;
   if (!/^[\w.-]+\/[\w.-]+$/.test(target)) throw new CliError("publishing requires a GitHub owner/repo catalog", 2, "pass --catalog owner/repo");
   const title = `Add or update ${name} loadout`;
-  const body = `Proposes \`loadouts/${name}.yml\` from a project-local loadout.\n\n## Verification\n\n${opts.summary.trim()}\n\nApplied with: ${lock.harnesses.join(", ")}.\nSelected alternatives: ${JSON.stringify(lock.loadouts[name])}.\n`;
+  const body = `Proposes \`loadouts/${name}.yml\` from a project-local loadout.\n\n## Verification\n\n${opts.summary.trim()}\n\nApplied with: ${lock.harnesses.join(", ")}.\nSelected alternatives: ${JSON.stringify(lock.loadouts[name])}.\nVerified active choices (active closure only): ${JSON.stringify(Object.fromEntries(closure.map(node => [node, lock.loadouts[node]])))}.\nInactive targets were checked for source portability only; they were not fetched or tested.\n`;
   if (!opts.yes) return `Catalog: ${target}\nFile: loadouts/${name}.yml\nTitle: ${title}\n\n${body}\n--- YAML ---\n${yaml}\nRun again with --yes to push a contribution branch and open a PR.`;
   for (const bin of ["git", "gh"]) if (!Bun.which(bin)) throw new CliError(`${bin} not found on PATH`, 3, `install ${bin}${bin === "gh" ? " and run gh auth login" : ""}, then rerun`);
   const root = mkdtempSync(join(tmpdir(), "loadouts-publish-")), checkout = join(root, "catalog");

@@ -40,11 +40,25 @@ export async function createLocal(project: string, name: string, from?: string):
   if (from) {
     const catalog = (existsSync(join(project, "loadouts.lock.json")) ? readLock(project).catalog : null) ?? await openCatalog(readConfig().catalog);
     const yaml = await readLoadoutYaml(catalog, from);
-    parseLoadout(yaml, from + ".yml");
-    data = {...Bun.YAML.parse(yaml) as object, name};
-  }
-  for (const [key, group] of Object.entries(data.items) as [string, any][]) {
-    if (group.kind === "one_of" || group.kind === "any_of") data.items[key] = {[group.kind]: group.members, default: group.kind === "one_of" ? group.default[0] : group.default};
+    try { data = Bun.YAML.parse(yaml); }
+    catch { throw new CliError(`${from}.yml: YAML: invalid syntax`, 1); }
+    try { JSON.stringify(data); }
+    catch { throw new CliError(`${from}.yml: cyclic YAML alias`, 1); }
+    const mapping = (value: any) => value !== null && typeof value === "object" && !Array.isArray(value);
+    const authorItems = (items: any): any => mapping(items) ? Object.fromEntries(Object.entries(items).map(([key, value]) => [key, authorItem(value)])) : items;
+    const authorItem = (value: any): any => {
+      if (!mapping(value)) return value;
+      let item = value;
+      if (value.kind === "one_of" || value.kind === "any_of") {
+        const {kind, members, default: defaults, ...rest} = value;
+        item = {...rest, [kind]: members, default: kind === "one_of" && Array.isArray(defaults) && defaults.length === 1 ? defaults[0] : defaults};
+      }
+      for (const key of ["items", "one_of", "any_of"]) if (Object.hasOwn(item, key)) item[key] = authorItems(item[key]);
+      return item;
+    };
+    if (mapping(data) && Object.hasOwn(data, "items")) data.items = authorItems(data.items);
+    parseLoadout(Bun.YAML.stringify(data), from + ".yml");
+    data = {...data, name};
   }
   const yaml = `# yaml-language-server: $schema=https://raw.githubusercontent.com/katisfaktion/loadouts/v${version}/schemas/v1/loadout.schema.json\n` + Bun.YAML.stringify(data, null, 2) + "\n";
   parseLoadout(yaml, name + ".yml");

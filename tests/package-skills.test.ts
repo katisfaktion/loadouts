@@ -3,6 +3,7 @@ import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, statSyn
 import { join } from "node:path";
 import * as fs from "node:fs";
 import { sync } from "../src/sync";
+import { readLock } from "../src/lock";
 import { tempEnv, run, fixtureCatalog, withEnv } from "./helpers";
 
 function setup(items: any = {ui: {packageSkills: {include: ["@acme/ui"], exclude: ["@acme/ui#experimental"]}, conventions: "Use @acme/ui for components."}}) {
@@ -135,7 +136,7 @@ test("Git-to-package migration refuses replaced native provenance and differing 
 test("install syncs selected companions, records portable ownership, and leaves the manifest unchanged", async () => {
   const t = setup(); pkg(t.project); const manifest = t.text("loadouts.json");
   const r = await run(["install"], t.opts); expect(r.code, r.stderr).toBe(0);
-  expect(t.lock().version).toBe(6);
+  expect(t.lock().version).toBe(1);
   expect(t.lock().packageSkills).toEqual({"@acme/ui": {version: "2.0.0", skills: ["components"], requiredBy: ["frontend/ui"]}});
   expect(t.lock().installed["package-skill:claude-code:@acme/ui#components"]).toEqual(["components"]);
   expect(t.text(".claude/skills/components/SKILL.md")).toContain("2.0.0"); expect(t.text(".agents/skills/components/reference.md")).toBe("Companion reference");
@@ -146,6 +147,18 @@ test("install syncs selected companions, records portable ownership, and leaves 
   const before = t.text("skills-lock.json"), mtime = statSync(join(t.project, ".agents/skills/components/SKILL.md")).mtimeMs;
   expect((await run(["install"], t.opts)).stdout.trim()).toBe("Nothing changed."); expect(t.text("skills-lock.json")).toBe(before); expect(statSync(join(t.project, ".agents/skills/components/SKILL.md")).mtimeMs).toBe(mtime);
   expect(readFileSync(t.opts.env.FAKE_SKILLS_LOG, "utf8")).not.toContain('"add"');
+});
+test("nested package owners round-trip through lock validation and release their companions", async () => {
+  const t = setup({languages: {any_of: {typescript: {items: {framework: {one_of: {react: {items: {ui: {packageSkills: {include: ["@acme/ui#components"]}}}}}, default: "react"}}}}, default: ["typescript"]}});
+  pkg(t.project);
+  const first = await run(["install"], t.opts); expect(first.code, first.stderr).toBe(0);
+  expect(readLock(t.project).packageSkills!["@acme/ui"]!.requiredBy).toEqual(["frontend/languages/typescript/framework/react/ui"]);
+  const before = t.text("loadouts.lock.json"), second = await run(["install"], t.opts);
+  expect(second.code, second.stderr).toBe(0); expect(t.text("loadouts.lock.json")).toBe(before);
+  const manifest = JSON.parse(t.text("loadouts.json")); manifest.loadouts.frontend.choices = {languages: []};
+  writeFileSync(join(t.project, "loadouts.json"), JSON.stringify(manifest));
+  const removed = await run(["install"], t.opts); expect(removed.code, removed.stderr).toBe(0);
+  expect(readLock(t.project).packageSkills).toEqual({}); expect(existsSync(join(t.project, ".agents/skills/components"))).toBe(false);
 });
 test("install follows dependency upgrades and removals without loadouts update", async () => {
   const t = setup(); pkg(t.project); await run(["install"], t.opts);
@@ -266,4 +279,21 @@ test.each(["constructor", "__proto__"])("valid companion name %s does not collid
   expect(Object.hasOwn(t.native().skills, name)).toBe(true); expect(t.native().skills[name].source).toBe("@acme/ui"); expect(t.text(`.agents/skills/${name}/SKILL.md`)).toContain("1.0.0");
   expect((await run(["install"], t.opts)).code).toBe(0); expect((await run(["remove", "frontend"], t.opts)).code).toBe(0);
   expect(existsSync(join(t.project, ".agents/skills", name))).toBe(false);
+});
+
+
+test("diamond package companions discover once per package and remain owned until the final root", async () => {
+  const t = setup(); pkg(t.project);
+  const source = (name: string) => ({source: `file:./.loadouts/catalog/${name}.yml`});
+  for (const name of ["a", "z"]) writeFileSync(join(t.project, `.loadouts/catalog/${name}.yml`), JSON.stringify({name, includes: {frontend: source("frontend")}, items: {also: {packageSkills: {include: ["@acme/ui#components"]}}}}));
+  writeFileSync(join(t.project, "loadouts.json"), JSON.stringify({harnesses: ["claude-code", "codex"], loadouts: {a: source("a"), z: source("z")}}));
+  expect((await run(["install"], t.opts)).code).toBe(0);
+  const calls = readFileSync(t.opts.env.FAKE_SKILLS_LOG, "utf8").trim().split("\n").map(line => JSON.parse(line));
+  expect(calls.filter(args => args[0] === "experimental_sync")).toHaveLength(1);
+  expect(t.lock().packageSkills["@acme/ui"].requiredBy).toEqual(["a/also", "frontend/ui", "z/also"]);
+  expect(Object.keys(t.lock().installed).filter(k => k.endsWith("@acme/ui#components"))).toHaveLength(2);
+  expect((await run(["remove", "a"], t.opts)).code).toBe(0); expect(existsSync(join(t.project, ".agents/skills/components/SKILL.md"))).toBe(true);
+  expect(t.lock().packageSkills["@acme/ui"].requiredBy).toEqual(["frontend/ui", "z/also"]);
+  expect((await run(["remove", "z"], t.opts)).code).toBe(0); expect(existsSync(join(t.project, ".agents/skills/components"))).toBe(false);
+  expect(existsSync(join(t.project, "node_modules/@acme/ui/package.json"))).toBe(true);
 });

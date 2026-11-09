@@ -15,7 +15,7 @@ import { helpText } from "./help";
 import { paint } from "./output";
 import { createLocal, localNames, readLocal, ensureLocalCatalog } from "./local";
 import { parseLoadout } from "./loadout";
-import { readManifest, writeManifest, migrateProject, parseSource, readSourceFile } from "./manifest";
+import { readManifest, writeManifest, parseSource, readSourceFile } from "./manifest";
 import { ensureGitignore } from "./codex";
 import { publish } from "./publish";
 import { inspectProject, inspectionRoot } from "./inspect";
@@ -23,14 +23,14 @@ import explorationSkill from "../skills/loadouts-explore/SKILL.md" with {type: "
 
 export const COMMANDS: Record<string, { brief: string; hint?: string; summary: string; examples: string[]; run: (args: ParsedCommand) => Promise<number> }> = {
   explore: {brief: "Explore the stack and propose a loadout.",
-    summary: "Print agent guidance for stack discovery with npx skills find and a validated draft; does not launch an agent or install anything.",
+    summary: "Print agent guidance for catalog-first reuse and additive composition: inspect include closures, search remaining gaps with npx skills find, and review conventions/routing against project instructions with source attribution and unresolved user decisions. Does not launch an agent or install anything.",
     examples: ["loadouts explore"],
     run: async args => {
       console.log(explorationSkill); return 0;
     },
   },
   validate: {brief: "Validate a loadout YAML file.", hint: "backend.yml",
-    summary: "Validate a YAML draft without initializing a project or installing anything.",
+    summary: "Validate one YAML file offline, including include entry shape and local routing references, without initializing or installing. Does not fetch descendants, resolve graph conflicts or certify semantic compatibility.",
     examples: ["loadouts validate .loadouts/catalog/backend.yml"],
     run: async args => {
       const {positionals} = args;
@@ -69,15 +69,14 @@ export const COMMANDS: Record<string, { brief: string; hint?: string; summary: s
     },
   },
   init: {brief: "Initialize the project manifest and local catalog.",
-    summary: "Create loadouts.json or migrate a legacy lock and local drafts; no components are installed.", examples: ["loadouts init --harness codex"],
+    summary: "Create loadouts.json and the local catalog; no components are installed.", examples: ["loadouts init --harness codex"],
     run: async args => {
       const {values} = args;
       const project = process.cwd();
-      const legacy = !existsSync(join(project, "loadouts.json")) && existsSync(join(project, "loadouts.lock.json"));
-      const existing = legacy ? readLock(project) : existsSync(join(project, "loadouts.json")) ? readManifest(project) : null;
+      const existing = existsSync(join(project, "loadouts.json")) ? readManifest(project) : null;
+      if (!existing && existsSync(join(project, "loadouts.lock.json"))) throw new CliError("loadouts.lock.json exists without loadouts.json", 1, "restore loadouts.json from version control before initializing this project");
       const harnesses = values.harness ? parseHarnesses(values.harness) : existing?.harnesses ?? readConfig().harnesses;
       if (existing && JSON.stringify([...existing.harnesses].sort()) !== JSON.stringify([...harnesses].sort())) throw new CliError("project already uses different harnesses", 2, "use loadouts harness add|remove");
-      if (legacy) migrateProject(project);
       const files: string[] = [];
       if (!existing && writeManifest(project, {harnesses, loadouts: {}})) files.push("loadouts.json");
       if (ensureLocalCatalog(project)) files.push(".loadouts/.gitkeep");
@@ -86,7 +85,7 @@ export const COMMANDS: Record<string, { brief: string; hint?: string; summary: s
     },
   },
   install: {brief: "Install declared loadouts and restore missing setup.",
-    summary: "Apply loadouts.json and restore missing skills from skills-lock.json with frozen hashes. Plugin versions remain best effort.",
+    summary: "Resolve direct selections and their active include closure, apply reachable local edits, and restore missing skills from skills-lock.json with frozen hashes. Includes map actual names to {source, choices?}; use full explicit sources and group-path-to-member arrays. Member includes activate only with their containing branch. Different sources or explicit choices for the same name conflict; include order provides no overrides. Plugin versions remain best effort.",
     examples: ["loadouts install"],
     run: async args => { await install(requireProject(process.cwd())); return 0; },
   },
@@ -99,7 +98,7 @@ export const COMMANDS: Record<string, { brief: string; hint?: string; summary: s
     },
   },
   publish: {brief: "Preview a catalog contribution; --yes opens a PR.", hint: "backend",
-    summary: "Preview a verified local loadout contribution; --yes pushes a branch and opens a PR.",
+    summary: "Preview an applied, verified local loadout contribution, including an included-only local node. Every include declaration in the chosen YAML and inspected active closure, including dormant branches, must use portable GitHub sources. Publish local dependencies first, update their sources, install and verify the selected composition. Offline preview checks active pinned descendants in the existing Git cache and refuses missing cache objects without fetching. Inactive targets receive source portability checks only; they are not fetched or tested. Copies only the chosen YAML, preserving includes; --yes pushes a branch and opens a PR.",
     examples: ["loadouts publish pipeline --summary 'Verified in my data project'", "loadouts publish pipeline --summary 'Verified in my data project' --yes"],
     run: async args => {
       const {values, positionals} = args;
@@ -107,16 +106,16 @@ export const COMMANDS: Record<string, { brief: string; hint?: string; summary: s
     },
   },
   status: {brief: "Show sources, selections and installation state.",
-    summary: "Show declared sources, applied selections and whether installation is needed.", examples: ["loadouts status --json"],
+    summary: "Show direct roots, included descendants and their parent edges, declared sources, applied selections and whether installation is needed.", examples: ["loadouts status --json"],
     run: args => projectCommand("status", args),
   },
-  remove: {brief: "Remove a declared loadout and its setup.", hint: "frontend", summary: "Remove a loaded setup.", examples: ["loadouts remove frontend"], run: args => projectCommand("remove", args) },
-  switch: {brief: "Choose a one_of alternative.", hint: "base/methodology choice", summary: "Choose a one_of alternative.", examples: ["loadouts switch base/methodology agent-skills"], run: args => projectCommand("switch", args) },
-  enable: {brief: "Enable an any_of member.", hint: "backend/runtime go", summary: "Enable an any_of member.", examples: ["loadouts enable backend/runtime go"], run: args => projectCommand("enable", args) },
-  disable: {brief: "Disable an any_of member.", hint: "backend/runtime go", summary: "Disable an any_of member.", examples: ["loadouts disable backend/runtime go"], run: args => projectCommand("disable", args) },
+  remove: {brief: "Remove a declared loadout and its setup.", hint: "frontend", summary: "Remove a direct selection, retaining descendants still required by another root. Included-only nodes must be removed through their parents.", examples: ["loadouts remove frontend"], run: args => projectCommand("remove", args) },
+  switch: {brief: "Choose a one_of alternative.", hint: "LOADOUT/PATH ALTERNATIVE", summary: "Choose a one_of alternative on a direct selection using its slash-separated group path. Enable containing ancestors first. Switching removes explicit descendant requests under deselected members from this direct entry and reports them; re-enabling uses defaults. For an included-only node, edit the declaring member's includes.<name>.choices or add the same source directly first. Direct choices cannot override conflicting include choices.", examples: ["loadouts switch base/methodology agent-skills", "loadouts switch testing/languages/python/framework unittest", "loadouts switch frontend/framework vue"], run: args => projectCommand("switch", args) },
+  enable: {brief: "Enable an any_of member.", hint: "LOADOUT/PATH MEMBER", summary: "Enable an any_of member on a direct selection using its slash-separated group path. Enable containing ancestors first; a child request never enables them implicitly. For an included-only node, edit the declaring member's includes.<name>.choices or add the same source directly first. Direct choices cannot override conflicting include choices.", examples: ["loadouts enable backend/runtime go", "loadouts enable testing/languages python", "loadouts enable testing/languages/python/extras coverage"], run: args => projectCommand("enable", args) },
+  disable: {brief: "Disable an any_of member.", hint: "LOADOUT/PATH MEMBER", summary: "Disable an any_of member on a direct selection using its slash-separated group path. Disabling a parent removes and reports explicit descendant requests under its deselected member from this direct entry; re-enabling uses defaults. For an included-only node, edit the declaring member's includes.<name>.choices or add the same source directly first. Direct choices cannot override conflicting include choices.", examples: ["loadouts disable backend/runtime go", "loadouts disable testing/languages python", "loadouts disable testing/languages/python/extras coverage"], run: args => projectCommand("disable", args) },
   harness: {brief: "Add or remove a project harness.", hint: "add codex", summary: "Change project harnesses.", examples: ["loadouts harness add codex"], run: args => projectCommand("harness", args) },
   update: {brief: "Refresh shared sources and selected skill contents.",
-    summary: "Refresh shared resolutions within declared refs and selected skill contents/hashes, keeping choices and applied local snapshots. Review and commit skills-lock.json; use install to apply local edits.", examples: ["loadouts update"],
+    summary: "Refresh shared resolutions throughout the include closure within declared refs and selected skill contents/hashes, keeping choices and applied local snapshots. Review and commit skills-lock.json; use install to apply local edits.", examples: ["loadouts update"],
     run: async args => { await update(requireProject(process.cwd())); return 0; },
   },
   doctor: {brief: "Check setup and explain how to fix problems.",
@@ -146,7 +145,7 @@ export const COMMANDS: Record<string, { brief: string; hint?: string; summary: s
     run: args => catalogCommand("list", args),
   },
   show: {brief: "Show a loadout definition and its source.", hint: "backend",
-    summary: "Show items, groups, defaults and routing.", examples: ["loadouts show base --json"],
+    summary: "Show the full declared tree of items, nested groups, defaults, conditional includes and routing. Installed descendants follow their pinned source.", examples: ["loadouts show base --json"],
     run: args => catalogCommand("show", args),
   },
   help: {brief: "Show command usage, flags and examples.", hint: "[command]",
@@ -155,8 +154,8 @@ export const COMMANDS: Record<string, { brief: string; hint?: string; summary: s
     run: async args => { console.log(helpText(args.positionals[0])); return 0; },
   },
   add: {brief: "Declare and install loadouts.", hint: "base frontend",
-    summary: "Declare and apply explicit sources. New bare names use the shared catalog; an existing name keeps its selected source. Replacing a selected source shows the old and new sources and asks for confirmation (default: no). Use --yes to approve replacements in scripts. Local files never implicitly override shared definitions.",
-    examples: ["loadouts add base frontend backend", "loadouts add file:./.loadouts/catalog/backend.yml", "loadouts add github:katisfaktion/agent-loadouts/backend@v0.1.0"],
+    summary: "Declare direct roots and apply their active include closure. Encode nested requests with --with LOADOUT/PATH=MEMBER[,MEMBER], repeating the option for other groups. All requests are validated together; select ancestors explicitly and omit literal items/one_of/any_of from paths. An empty value clears an any_of group. Inactive requests fail instead of being discarded. Explicit choices must agree across roots and include edges; they never override one another. New bare names use the shared catalog; an existing name keeps its selected source. Replacing a selected source shows the old and new sources and asks for confirmation (default: no). Use --yes to approve replacements in scripts. Local files never implicitly override shared definitions.",
+    examples: ["loadouts add base frontend backend", "loadouts add file:./.loadouts/catalog/backend.yml", "loadouts add github:katisfaktion/agent-loadouts/backend@v0.1.0", "loadouts add testing --with testing/languages=python --with testing/languages/python/framework=unittest"],
     run: args => projectCommand("add", args),
   },
 };
@@ -170,7 +169,8 @@ async function catalogCommand(command: "list" | "show", args: ParsedCommand): Pr
   const locals = project && !values.catalog ? localNames(project) : [];
   if (command === "show" && project && !values.catalog) {
     const name = positionals[0]!;
-    const selected = existsSync(join(project, "loadouts.json")) ? readManifest(project).loadouts[name] : lock?.resolved?.[name];
+    const declared = existsSync(join(project, "loadouts.json")) ? readManifest(project).loadouts : {};
+    const selected = Object.hasOwn(declared, name) ? declared[name] : lock?.resolved?.[name];
     if (selected) {
       const parsed = parseSource(selected.source);
       if (parsed.kind === "catalog") {

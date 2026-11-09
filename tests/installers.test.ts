@@ -250,3 +250,25 @@ test.each(["git-named", "git-discovered", "package"])("installer does not overwr
   expect(readFileSync(skill, "utf8")).toContain(source === "package" ? "Package skill" : "# codebase-memory");
   expect(json(join(t.project, "skills-lock.json")).skills["codebase-memory"].sourceType).toBe(source === "package" ? "node_modules" : "github");
 });
+
+
+test("included shared installer retries with graph intact and releases only the final root's project assets", async () => {
+  const t = fixture();
+  const source = (name: string) => ({source: `file:./.loadouts/catalog/${name}.yml`});
+  for (const name of ["a", "z"]) writeFileSync(join(t.project, `.loadouts/catalog/${name}.yml`), JSON.stringify({name, includes: {memory: source("memory")}}));
+  writeFileSync(join(t.project, "loadouts.json"), JSON.stringify({harnesses: ["claude-code", "codex"], loadouts: {a: source("a"), z: source("z")}}));
+  writeFileSync(join(t.project, "AGENTS.md"), "Personal instructions.\n");
+  const failed = await t.run(["install"], {FAKE_INSTALLER_FAIL: "index"}); expect(failed.code, failed.stderr).toBe(1);
+  const partial = readLock(t.project); expect(partial.version).toBe(1); expect(partial.incomplete).toBe(true);
+  expect(Object.keys(partial.roots!)).toEqual(["a", "z"]); expect(partial.includes!.a!.memory).toEqual(source("memory"));
+  const retried = await t.run(["install"]); expect(retried.code, retried.stderr).toBe(0);
+  expect(readLock(t.project).roots).toEqual(partial.roots); expect(readLock(t.project).includes).toEqual(partial.includes);
+  const profile = join(t.project, ".codex/agents/codebase-memory.toml");
+  expect((await t.run(["remove", "a"])).code).toBe(0); expect(existsSync(profile)).toBe(true);
+  expect(readFileSync(join(t.project, "AGENTS.md"), "utf8")).toContain("memory");
+  expect((await t.run(["install"])).code).toBe(0);
+  expect(calls(t.log).filter(c => c.args[0] === "install")).toHaveLength(1);
+  expect((await t.run(["remove", "z"])).code).toBe(0); expect(existsSync(profile)).toBe(false);
+  expect(readFileSync(join(t.project, "AGENTS.md"), "utf8")).toBe("Personal instructions.\n");
+  expect(existsSync(t.executable)).toBe(true); expect(calls(t.log).some(c => ["uninstall", "update"].includes(c.args[0]))).toBe(false);
+});

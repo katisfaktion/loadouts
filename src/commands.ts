@@ -24,7 +24,7 @@ const yes = map(multiple(option("--yes", {description: message`Apply the preview
 const arg = (metavar: string) => argument(string({metavar}));
 const none = constant([] as string[]);
 const empty = constant({});
-const groupMember = tuple([arg("LOADOUT/GROUP"), arg("MEMBER")]);
+const groupMember = tuple([arg("LOADOUT/PATH"), arg("MEMBER")]);
 
 export const commandParsers = {
   explore: object({positionals: none, values: empty}),
@@ -37,7 +37,7 @@ export const commandParsers = {
   publish: object({positionals: tuple([arg("NAME")]), values: object({summary: map(multiple(textOption("--summary", "TEXT", "Describe how this loadout was verified (required to publish).")), values => values.at(-1)), catalog, yes})}),
   status: object({positionals: none, values: object({json})}),
   remove: object({positionals: tuple([arg("LOADOUT")]), values: empty}),
-  switch: object({positionals: tuple([arg("LOADOUT/GROUP"), arg("ALTERNATIVE")]), values: empty}),
+  switch: object({positionals: tuple([arg("LOADOUT/PATH"), arg("ALTERNATIVE")]), values: empty}),
   enable: object({positionals: groupMember, values: empty}),
   disable: object({positionals: groupMember, values: empty}),
   harness: object({positionals: tuple([argument(choice(["add", "remove"], {metavar: "ACTION"})), arg("HARNESS")]), values: empty}),
@@ -50,7 +50,7 @@ export const commandParsers = {
   show: object({positionals: tuple([arg("LOADOUT")]), values: object({catalog, json})}),
   help: object({positionals: multiple(arg("COMMAND"), {max: 1}), values: empty}),
   add: object({positionals: multiple(arg("LOADOUT"), {min: 1}), values: object({
-    with: multiple(textOption("--with", "LOADOUT/GROUP=CHOICE[,CHOICE]", "Select group members; repeat for other groups. An empty value clears an any_of group.")), catalog,
+    with: multiple(textOption("--with", "LOADOUT/PATH=CHOICE[,CHOICE]", "Select group members, including nested paths; repeat for other groups. An empty value clears an any_of group. All requests are validated together; select ancestors explicitly.")), catalog,
     yes: map(multiple(option("--yes", {description: message`Confirm source replacements without prompting.`})), values => values.length > 0),
   })}),
 };

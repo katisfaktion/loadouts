@@ -43,7 +43,7 @@ test("local source cannot follow a symlink outside the committed catalog", () =>
 test("resolution reads selected local edits and derives group defaults without writes", async () => {
   const t = local(), m = readManifest(t.project);
   const lock = await resolveManifest(t.project, m);
-  expect(lock.version).toBe(3); expect(lock.loadouts.backend).toEqual({runtime: ["bun"]});
+  expect(lock.version).toBe(1); expect(lock.loadouts.backend).toEqual({runtime: ["bun"]});
   expect(lock.local?.backend).toContain("acme/bun");
   writeLock(t.project, lock); expect(readLock(t.project).resolved?.backend.source).toBe(manifest.loadouts.backend.source);
 });
@@ -89,17 +89,66 @@ test("manifest writing omits empty choices but retains explicitly empty group se
   expect(writeManifest(t.project, manifest)).toBe(false);
 });
 
-test("native layout lock v6 retains optional sections and survives manifest resolution", async () => {
-  const t = local(), original = await resolveManifest(t.project, readManifest(t.project));
-  const lock = {...original, version: 6 as const};
-  writeLock(t.project, lock); expect(readLock(t.project).version).toBe(6);
-  expect((await resolveManifest(t.project, readManifest(t.project), readLock(t.project))).version).toBe(6);
+test("release lock v1 retains optional sections and survives manifest resolution", async () => {
+  const t = local(), lock = await resolveManifest(t.project, readManifest(t.project));
+  writeLock(t.project, lock); expect(readLock(t.project).version).toBe(1);
+  expect(JSON.parse(readFileSync(join(t.project, "loadouts.lock.json"), "utf8")).version).toBe(1);
+  expect((await resolveManifest(t.project, readManifest(t.project), readLock(t.project))).version).toBe(1);
   for (const sections of [{}, {installers: {}}, {packageSkills: {}}, {installers: {}, packageSkills: {}}]) {
     writeFileSync(join(t.project, "loadouts.lock.json"), JSON.stringify({...lock, ...sections}));
-    expect(readLock(t.project)).toMatchObject({version: 6, ...sections});
+    expect(readLock(t.project)).toMatchObject({version: 1, ...sections});
   }
   for (const sections of [{installers: []}, {packageSkills: []}, {installers: {foreign: {version: "1"}}}, {packageSkills: {"ui": {version: "1", skills: "bad", requiredBy: []}}}]) {
     writeFileSync(join(t.project, "loadouts.lock.json"), JSON.stringify({...lock, ...sections}));
     expect(() => readLock(t.project)).toThrow("invalid lock");
   }
+});
+
+test("release locks reject development formats and require the complete graph", async () => {
+  const t = local(), lock = await resolveManifest(t.project, readManifest(t.project));
+  const file = join(t.project, "loadouts.lock.json");
+  for (const version of [2, 3, 4, 5, 6, 7, 8, 9]) {
+    const text = JSON.stringify({...lock, version});
+    writeFileSync(file, text);
+    expect(() => readLock(t.project)).toThrow("invalid lock");
+    expect(readFileSync(file, "utf8")).toBe(text);
+  }
+  for (const field of ["roots", "includes", "resolved"]) {
+    const incomplete: Record<string, unknown> = {...lock, version: 1};
+    delete incomplete[field];
+    writeFileSync(file, JSON.stringify(incomplete));
+    expect(() => readLock(t.project)).toThrow("invalid lock");
+  }
+  writeFileSync(file, JSON.stringify({version: 1, harnesses: [], catalog: null, loadouts: {}, installed: {}}));
+  expect(() => readLock(t.project)).toThrow("invalid lock");
+});
+
+test("manifest selections retain include-compatible explicit empty choices", () => {
+  const t = tempEnv(), value = {harnesses: [], loadouts: {testing: {source: "github:acme/catalog/testing@v1.0.0", choices: {tools: []}}}};
+  writeFileSync(join(t.project, "loadouts.json"), JSON.stringify(value));
+  expect(readManifest(t.project)).toEqual(value);
+});
+test.each([
+  {source: "github:acme/catalog/testing", typo: true},
+  {source: "github:acme/catalog/testing", choices: {tools: ["a", "a"]}},
+  {source: "invalid"},
+])("selection failures retain manifest entry context: %j", entry => {
+  const t = tempEnv(); writeFileSync(join(t.project, "loadouts.json"), JSON.stringify({harnesses: [], loadouts: {testing: entry}}));
+  expect(() => readManifest(t.project)).toThrow("invalid loadouts.json entry testing");
+});
+
+test("manifest accepts nested choice paths while preserving member and source identifiers", () => {
+  const t = tempEnv(), value = {harnesses: [], loadouts: {testing: {source: "github:acme/catalog/testing", choices: {"languages/python/framework": ["pytest"]}}}};
+  writeFileSync(join(t.project, "loadouts.json"), JSON.stringify(value));
+  expect(readManifest(t.project)).toEqual(value);
+  for (const path of ["/languages", "languages/", "languages//framework"]) {
+    writeFileSync(join(t.project, "loadouts.json"), JSON.stringify({...value, loadouts: {testing: {...value.loadouts.testing, choices: {[path]: []}}}}));
+    expect(() => readManifest(t.project)).toThrow();
+  }
+});
+
+test("manifest retains dot-prefixed nested choice path segments", () => {
+  const t = tempEnv(), value = {harnesses: [], loadouts: {nested: {source: "github:acme/catalog/nested", choices: {"parent/.child": ["x"]}}}};
+  writeFileSync(join(t.project, "loadouts.json"), JSON.stringify(value));
+  expect(readManifest(t.project)).toEqual(value);
 });

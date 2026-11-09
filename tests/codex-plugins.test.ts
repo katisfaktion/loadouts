@@ -31,7 +31,7 @@ test("native config preserves settings and staged plugin installation leaves glo
   expect(t.config().projects).toBeUndefined(); expect(existsSync(join(t.project, ".codex/auth.json"))).toBe(false);
   expect(readFileSync(global, "utf8")).toBe(original);
   expect(existsSync(join(t.cache, ".codex-plugin/plugin.json"))).toBe(true);
-  expect(readLock(t.project).version).toBe(6); expect(readLock(t.project).installed["codex-plugin:review@team"]).toEqual([]);
+  expect(readLock(t.project).version).toBe(1); expect(readLock(t.project).installed["codex-plugin:review@team"]).toEqual([]);
   expect(adds(t)).toHaveLength(1); expect(adds(t)[0].home).not.toBe(join(t.home, ".codex"));
   const files = [t.file, global, join(t.cache, ".codex-plugin/plugin.json"), join(t.project, "loadouts.lock.json")];
   const before = files.map(f => [readFileSync(f, "utf8"), statSync(f).mtimeMs]);
@@ -81,20 +81,6 @@ test("marketplace conflicts and differing unmanaged plugins fail before native c
   expect((await run(add, t.opts)).code).toBe(1); expect(t.calls()).toEqual([]); expect(readFileSync(t.file, "utf8")).toBe(before);
 });
 
-test.each(["conflict", "matching", "remove"])("legacy migration protects native ownership: %s", async mode => {
-  const t = await setup(); expect((await run(add, t.opts)).code).toBe(0);
-  const oldDir = join(t.project, ".loadouts/codex-home"); mkdirSync(oldDir, {recursive: true});
-  const old = readFileSync(t.file, "utf8") + '[plugins."review@team".mcp_servers.docs]\nenabled_tools = ["search"]\n[hooks.state.old]\ntrusted_hash = "do-not-export"\n';
-  writeFileSync(join(oldDir, "config.toml"), old); writeFileSync(join(oldDir, "history.jsonl"), "keep history");
-  const lockFile = join(t.project, "loadouts.lock.json"), lock = readLock(t.project); lock.version = 3; writeFileSync(lockFile, JSON.stringify(lock)); const beforeLock = readFileSync(lockFile, "utf8");
-  const destination = mode === "matching" ? '[plugins."review@team"]\nenabled = true\n[plugins."review@team".mcp_servers.docs]\nenabled_tools = ["search"]\n' : '[plugins."review@team"]\nenabled = false\n'; writeFileSync(t.file, destination);
-  const r = await run(mode === "remove" ? ["harness", "remove", "codex"] : ["install"], t.opts);
-  expect(r.code, r.stderr).toBe(mode === "conflict" ? 1 : 0);
-  if (mode === "conflict") { expect(readFileSync(lockFile, "utf8")).toBe(beforeLock); expect(readFileSync(t.file, "utf8")).toBe(destination); }
-  else if (mode === "matching") { expect(t.config().plugins["review@team"].mcp_servers.docs.enabled_tools).toEqual(["search"]); expect(t.config().hooks).toBeUndefined(); }
-  else expect(t.config().plugins["review@team"].enabled).toBe(false);
-  expect(readFileSync(join(oldDir, "config.toml"), "utf8")).toBe(old); expect(readFileSync(join(oldDir, "history.jsonl"), "utf8")).toBe("keep history");
-});
 
 test("missing cache and missing project declarations are repaired without changing lock selections", async () => {
   const t = await setup(); expect((await run(add, t.opts)).code).toBe(0);

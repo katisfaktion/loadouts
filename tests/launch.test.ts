@@ -67,3 +67,23 @@ test("launch requires a completed install matching the manifest", async () => {
   writeFileSync(file, JSON.stringify({...lock, incomplete: true}));
   expect((await run(["claude"], opts)).stderr).toContain("loadouts install");
 });
+
+test("launch uses only graph roots for readiness and remains read-only with included nodes", async () => {
+  const t = tempEnv(), bin = join(t.home, "bin"); mkdirSync(bin); mkdirSync(join(t.project, ".loadouts/catalog"), {recursive: true});
+  writeFileSync(join(bin, "codex"), '#!/bin/sh\nexit 9\n', {mode: 0o755});
+  writeFileSync(join(t.project, ".loadouts/catalog/root.yml"), 'name: root\nincludes: {child: {source: "file:./.loadouts/catalog/child.yml"}}\n');
+  writeFileSync(join(t.project, ".loadouts/catalog/child.yml"), 'name: child\nitems: {}\nconventions: included guidance\n');
+  writeFileSync(join(t.project, "loadouts.json"), JSON.stringify({harnesses: ["codex"], loadouts: {root: {source: "file:./.loadouts/catalog/root.yml"}}}));
+  const opts = {cwd: t.project, env: {...t.env, PATH: `${bin}:${process.env.PATH}`}};
+  const result = await run(["install"], opts); expect(result.code, result.stderr).toBe(0);
+  const files = ["loadouts.json", "loadouts.lock.json", ".codex/config.toml", "AGENTS.md"], before = files.map(f => readFileSync(join(t.project, f), "utf8"));
+  expect(JSON.parse(before[1]!).version).toBe(1); expect(JSON.parse(before[1]!).loadouts.child).toEqual({});
+  const launched = await run(["codex"], opts); expect(launched.code, launched.stderr).toBe(9);
+  expect(files.map(f => readFileSync(join(t.project, f), "utf8"))).toEqual(before);
+  const manifest = JSON.parse(before[0]!); manifest.loadouts.child = {source: "file:./.loadouts/catalog/child.yml"};
+  writeFileSync(join(t.project, "loadouts.json"), JSON.stringify(manifest));
+  const pending = readFileSync(join(t.project, "loadouts.json"), "utf8");
+  const blocked = await run(["codex"], opts); expect(blocked.code).toBe(1); expect(blocked.stderr).toContain("loadouts install");
+  expect(readFileSync(join(t.project, "loadouts.json"), "utf8")).toBe(pending);
+  expect(files.slice(1).map(f => readFileSync(join(t.project, f), "utf8"))).toEqual(before.slice(1));
+});

@@ -91,15 +91,3 @@ test("all replacements are shown together and declining cancels new additions to
   expect(result.output).toContain(`file:${second}#base`); expect(result.output).toContain(`file:${second}#backend`);
   expect(snapshot(t.project)).toEqual(before);
 });
-
-test("declining replacement does not migrate a legacy project", async () => {
-  const t = tempEnv(), opts = {cwd: t.project, env: t.env};
-  mkdirSync(join(t.project, ".loadouts"));
-  const yaml = "name: work\nitems: {}\n";
-  writeFileSync(join(t.project, ".loadouts/work.yml"), yaml);
-  writeFileSync(join(t.project, "loadouts.lock.json"), JSON.stringify({version: 2, harnesses: ["claude-code"], catalog: null, loadouts: {work: {}}, local: {work: yaml}, installed: {}}));
-  const before = snapshot(t.project);
-  const result = await run(["add", `file:${join(t.home, "missing-catalog")}#work`], opts);
-  expect(result.code).toBe(1); expect(result.stderr).toContain("--yes");
-  expect(snapshot(t.project)).toEqual(before); expect(existsSync(join(t.project, "loadouts.json"))).toBe(false);
-});

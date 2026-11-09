@@ -8,7 +8,7 @@ import { tempEnv, withEnv } from "./helpers";
 
 function writeCodexHome(project: string, mcp: Record<string, any>): boolean {
   const artifacts = new Map(Object.entries(mcp).map(([name, value]) => [`mcp:codex:${name}`, {itemId: "test/server", mcp: value}]));
-  return writeIfChanged(codexConfigPath(project), prepareCodexConfig(project, {version: 6, harnesses: ["codex"], catalog: null, loadouts: {}, installed: Object.fromEntries([...artifacts.keys()].map(k => [k, []])), resolved: {}}, artifacts));
+  return writeIfChanged(codexConfigPath(project), prepareCodexConfig(project, {version: 1, roots: {}, includes: {}, harnesses: ["codex"], catalog: null, loadouts: {}, installed: Object.fromEntries([...artifacts.keys()].map(k => [k, []])), resolved: {}}, artifacts));
 }
 test("Claude add, switch and removal preserve the user's own settings", () => {
   const {project} = tempEnv();
@@ -106,12 +106,4 @@ test("generated npx MCP configuration is portable between developer homes", asyn
   const t = tempEnv(); symlinkSync(t.home, join(t.project, ".codex"));
   expect(() => writeCodexHome(t.project, {})).toThrow("symlink");
   expect(existsSync(join(t.home, "config.toml"))).toBe(false);
-});
-
-test("legacy plugin policy must be a table before migration", () => {
-  const t = tempEnv(); mkdirSync(join(t.project, ".loadouts/codex-home"), {recursive: true});
-  writeFileSync(join(t.project, ".loadouts/codex-home/config.toml"), '[plugins]\n"review@team" = "invalid"\n');
-  const lock = {version: 3 as const, harnesses: ["codex" as const], catalog: null, resolved: {}, loadouts: {}, installed: {"codex-plugin:review@team": []}};
-  expect(() => prepareCodexConfig(t.project, lock, new Map([["codex-plugin:review@team", {itemId: "test/review", mcp: null}]]))).toThrow("invalid plugins");
-  expect(existsSync(codexConfigPath(t.project))).toBe(false);
 });

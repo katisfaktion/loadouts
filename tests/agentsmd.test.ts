@@ -25,7 +25,7 @@ test("routing reflects chosen members and installed skill names", () => {
   const section = renderSection([{ loadout: parseLoadout(baseYaml, "base.yml"), choices: {methodology: ["agent-skills"]} }], ["claude-code", "codex"], {"skill:codex:DietrichGebert/ponytail": ["ponytail", "ponytail-audit"]});
   expect(section).toContain("agent-skills"); expect(section).not.toContain("superpowers");
   expect(section).toContain("plugin `ponytail` (Claude Code); skills `ponytail`, `ponytail-audit` (Codex)");
-  expect(section).toContain("**ponytail:** Terse code");
+  expect(section).toContain("**base/ponytail:** Terse code");
   expect(renderSection([], ["codex"], {})).toBe("");
 });
 test("typed routing only labels the requested source", () => {
@@ -64,4 +64,27 @@ routing:
   expect(empty).toContain("| Working with content | skills `acme/content@edit` |");
   const selected = renderSection([{loadout, choices: {imports: ["cms"]}}], ["codex"], {});
   expect(selected).toContain("| Importing content from another CMS into Payload | skills `acme/content@import` |");
+});
+
+test("nested routing expands active descendants by segments and attributes container conventions once", () => {
+  const loadout = parseLoadout(JSON.stringify({name: "testing", items: {
+    languages: {any_of: {
+      py: {skills: ["acme/container@container"], conventions: "Container rules", items: {
+        framework: {one_of: {pytest: {skills: ["acme/tests@pytest"], conventions: "Pytest rules"}, unittest: {skills: ["acme/tests@unittest"]}}, default: "pytest"},
+      }},
+      python: {skills: ["acme/python@python"]},
+    }, default: ["py", "python"]},
+  }, routing: [
+    {when: "Python tests", use: ["languages/py"]},
+    {when: "Selected framework", use: ["languages/py/framework/pytest"]},
+    {when: "Inactive framework", use: ["languages/py/framework/unittest"]},
+    {when: "Typed tests", use: ["skill:pytest"]},
+  ]}), "testing.yml");
+  const text = renderSection([{loadout, choices: {}}], ["codex"], {});
+  expect(text).toContain("| Python tests | skills `acme/container@container`; skills `acme/tests@pytest` | testing/languages/py |");
+  expect(text).toContain("| Selected framework | skills `acme/tests@pytest` |");
+  expect(text).toContain("| Typed tests | skills `acme/tests@pytest` |");
+  expect(text).not.toContain("| Inactive framework"); expect(text).not.toContain("acme/python@python");
+  expect(text.match(/\*\*testing\/languages\/py:\*\* Container rules/g)).toHaveLength(1);
+  expect(text).toContain("**testing/languages/py/framework/pytest:** Pytest rules");
 });

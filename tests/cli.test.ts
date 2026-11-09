@@ -64,6 +64,14 @@ test("install and add help explain committed sources and restoration", async () 
   expect(add.stdout).toContain("file:./.loadouts/catalog/");
 });
 
+test("install help describes release lock v1 without development migrations", async () => {
+  const result = await run(["help", "install"]);
+  expect(result.code).toBe(0);
+  expect(result.stdout).toContain("Lock format 1");
+  expect(result.stdout).toContain("Development lock formats are not supported");
+  expect(result.stdout).not.toMatch(/migrat|locks 1–5|Lock v6/);
+});
+
 test.each(["claude", "codex"])("%s help explains normal inheritance and read-only preflight", async command => {
   const r = await run(["help", command]);
   expect(r.code).toBe(0); expect(r.stdout).toContain("normal configuration inheritance");

@@ -50,18 +50,16 @@ export function prepareCodexConfig(project: string, lock: Lock, artifacts: Map<s
   const config = read(file), original = stringifyCodexConfig(config);
   const object = (value: any) => value !== null && typeof value === "object" && !Array.isArray(value);
   for (const field of ["mcp_servers", "marketplaces", "plugins"]) if (config[field] !== undefined && (!object(config[field]) || Object.values(config[field]).some(v => !object(v)))) throw new CliError(`invalid ${field} in ${file}`, 1, "use TOML tables for Codex entries, then rerun");
-  const legacy = lock.version < 6 ? read(join(project, ".loadouts/codex-home/config.toml")) : {};
-  if (legacy.plugins !== undefined && (!object(legacy.plugins) || Object.values(legacy.plugins).some(v => !object(v)))) throw new CliError("invalid plugins in legacy Codex configuration", 1, "repair the legacy plugin policy tables before migration");
   const owned = [...new Set([...Object.keys(lock.installed), ...lock.pending ?? []])];
   const entry = (key: string): [string, string] | null => key.startsWith("mcp:codex:") ? ["mcp_servers", key.slice(10)] : key.startsWith("codex-plugin:") ? ["plugins", key.slice(13)] : key.startsWith("codex-marketplace:") ? ["marketplaces", key.split(":")[1]!] : null;
   const wanted = new Map<string, any>();
   for (const [key, artifact] of artifacts) {
     const target = entry(key); if (!target) continue;
     const [field, name] = target, current = Object.hasOwn(config[field] ?? {}, name) ? config[field][name] : undefined;
-    const isOwned = lock.version === 6 && owned.some(k => { const e = entry(k); return e?.[0] === field && e[1] === name; });
+    const isOwned = owned.some(k => { const e = entry(k); return e?.[0] === field && e[1] === name; });
     let value: any;
     if (field === "mcp_servers") value = {...(isOwned ? Object.fromEntries(Object.entries(current ?? {}).filter(([k]) => !["command", "args", "env", "url"].includes(k))) : {}), ...expandProject(artifact.mcp!, project)};
-    else if (field === "plugins") value = {...(isOwned ? current : owned.includes(key) ? legacy.plugins?.[name] : {}), enabled: true};
+    else if (field === "plugins") value = {...(isOwned ? current : {}), enabled: true};
     else value = {...(isOwned ? current : {}), source_type: "git", source: `https://github.com/${key.split(":")[2]}.git`};
     const id = `${field}:${name}`;
     if (wanted.has(id) && JSON.stringify(wanted.get(id)) !== JSON.stringify(value)) throw new CliError(`conflicting Codex marketplace sources for ${name}`, 1, "use one repository per marketplace name");
@@ -69,7 +67,7 @@ export function prepareCodexConfig(project: string, lock: Lock, artifacts: Map<s
     if (current !== undefined && !isOwned && stable(current) !== stable(value)) throw new CliError(`${name} already exists in ${file} and is not managed by loadouts`, 1, "resolve the conflicting entry without losing your settings, then rerun");
     wanted.set(id, value);
   }
-  if (lock.version === 6) for (const key of owned) {
+  for (const key of owned) {
     const target = entry(key); if (!target) continue;
     const [field, name] = target;
     if (!wanted.has(`${field}:${name}`) && config[field]) delete config[field][name];

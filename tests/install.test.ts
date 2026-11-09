@@ -15,7 +15,7 @@ function setup(skills = true) {
 }
 test("install sets up a manifest-only project and a fresh clone without repeating successful installers", async () => {
   const t = setup(); expect((await run(["install"], t.opts)).code).toBe(0);
-  expect(t.lock().version).toBe(6); expect(t.lock().installed["skill:codex:acme/tools@review"]).toEqual(["review"]);
+  expect(t.lock().version).toBe(1); expect(t.lock().installed["skill:codex:acme/tools@review"]).toEqual(["review"]);
   expect(existsSync(join(t.project, ".claude/skills/review/SKILL.md"))).toBe(true);
   const before = readFileSync(t.opts.env.FAKE_SKILLS_LOG, "utf8"), mtime = statSync(join(t.project, "loadouts.lock.json")).mtimeMs;
   expect((await run(["install"], t.opts)).stdout.trim()).toBe("Nothing changed.");
@@ -206,37 +206,14 @@ test("partial first install records intended manifest and supports retry and rem
   const t = setup(); writeFileSync(t.file, "name: work\nitems: {tools: {skills: [acme/tools]}}\n");
   const env = {...t.opts.env, FAKE_SKILLS: JSON.stringify({"acme/tools": ["one", "two"]}), FAKE_SKILLS_PARTIAL: "acme/tools"};
   expect((await run(["install"], {...t.opts, env})).code).toBe(1);
+  expect(t.lock().version).toBe(1); expect(Object.keys(t.lock().roots)).toEqual(["work"]);
   expect(t.lock().pending).toEqual(["skill:claude-code:acme/tools"]); expect(t.lock().installed["skill:claude-code:acme/tools"]).toEqual(["one"]);
   expect((await run(["install"], {...t.opts, env: {...env, FAKE_SKILLS_PARTIAL: ""}})).code).toBe(0);
   expect(t.lock().pending).toBeUndefined();
   rmSync(t.file); expect((await run(["remove", "work"], t.opts)).code).toBe(0); expect(t.lock().installed).toEqual({});
 });
-test("migration preserves applied selections and edited and unselected drafts without changing Codex home", async () => {
-  const t = tempEnv(), opts = {cwd: t.project, env: t.env}, catalog = fixtureCatalog();
-  mkdirSync(join(t.project, ".loadouts/codex-home"), {recursive: true}); writeFileSync(join(t.project, ".loadouts/codex-home/state"), "keep");
-  const applied = "name: work\nitems: {}\nconventions: applied\n", edited = applied.replace("applied", "edited");
-  writeFileSync(join(t.project, ".loadouts/work.yml"), edited); writeFileSync(join(t.project, ".loadouts/draft.yml"), "name: draft\nitems: {}\n");
-  const old = {version: 2, harnesses: ["claude-code"], catalog: {repo: catalog, ref: "v1.0.0", commit: git(catalog, "rev-parse", "HEAD")}, loadouts: {work: {}, backend: {runtime: ["python"]}}, local: {work: applied}, installed: {}, incomplete: true};
-  writeFileSync(join(t.project, "loadouts.lock.json"), JSON.stringify(old));
-  expect((await run(["init"], opts)).code).toBe(0);
-  const manifest = JSON.parse(readFileSync(join(t.project, "loadouts.json"), "utf8")), lock = JSON.parse(readFileSync(join(t.project, "loadouts.lock.json"), "utf8"));
-  expect(manifest.harnesses).toEqual(["claude-code"]); expect(manifest.loadouts.work.source).toBe("file:./.loadouts/catalog/work.yml");
-  expect(manifest.loadouts.work.choices).toBeUndefined();
-  expect(manifest.loadouts.backend.choices).toEqual({runtime: ["python"]}); expect(lock.local.work).toBe(applied); expect(lock.incomplete).toBe(true);
-  expect(lock.resolved.backend.catalog.commit).toBe(old.catalog.commit); expect(manifest.loadouts.backend.source).not.toContain("@v1.0.0");
-  expect(readFileSync(join(t.project, ".loadouts/catalog/work.yml"), "utf8")).toBe(edited);
-  expect(existsSync(join(t.project, ".loadouts/catalog/draft.yml"))).toBe(true); expect(manifest.loadouts.draft).toBeUndefined();
-  expect(existsSync(join(t.project, ".loadouts/work.yml"))).toBe(false); expect(readFileSync(join(t.project, ".loadouts/codex-home/state"), "utf8")).toBe("keep");
-  const before = readFileSync(join(t.project, "loadouts.lock.json"), "utf8"); expect((await run(["init"], opts)).code).toBe(0); expect(readFileSync(join(t.project, "loadouts.lock.json"), "utf8")).toBe(before);
-});
-test("migration refuses conflicting destinations before moving any files", async () => {
-  const t = tempEnv(), opts = {cwd: t.project, env: t.env}; mkdirSync(join(t.project, ".loadouts/catalog"), {recursive: true});
-  for (const name of ["a", "z"]) writeFileSync(join(t.project, `.loadouts/${name}.yml`), `name: ${name}\nitems: {}\n`);
-  writeFileSync(join(t.project, ".loadouts/catalog/z.yml"), "different");
-  const before = JSON.stringify({version: 1, harnesses: ["codex"], catalog: null, loadouts: {}, installed: {}}); writeFileSync(join(t.project, "loadouts.lock.json"), before);
-  expect((await run(["init"], opts)).code).toBe(1); expect(existsSync(join(t.project, ".loadouts/a.yml"))).toBe(true);
-  expect(readFileSync(join(t.project, ".loadouts/catalog/z.yml"), "utf8")).toBe("different"); expect(readFileSync(join(t.project, "loadouts.lock.json"), "utf8")).toBe(before); expect(existsSync(join(t.project, "loadouts.json"))).toBe(false);
-});
+
+
 test("bare add uses shared catalog explicitly, local selection requires file source", async () => {
   const t = tempEnv(), catalog = fixtureCatalog(), opts = {cwd: t.project, env: t.env}; await run(["init", "--harness", "claude-code"], opts);
   mkdirSync(join(t.project, ".loadouts/catalog"), {recursive: true}); writeFileSync(join(t.project, ".loadouts/catalog/backend.yml"), "name: backend\nitems: {}\nconventions: local only\n");
@@ -278,15 +255,27 @@ test("malformed existing locks are never replaced by install", async () => {
   writeFileSync(path, before); expect((await run(["install"], t.opts)).code).toBe(1); expect(readFileSync(path, "utf8")).toBe(before);
 });
 
-test.each(["codex", "invalid"])("rejected legacy init --harness %s preserves all project files", async harness => {
-  const t = tempEnv(), opts = {cwd: t.project, env: t.env}; mkdirSync(join(t.project, ".loadouts"));
-  const yaml = "name: work\nitems: {}\n", before = JSON.stringify({version: 2, harnesses: ["claude-code"], catalog: null, loadouts: {work: {}}, local: {work: yaml}, installed: {}});
-  writeFileSync(join(t.project, ".loadouts/work.yml"), yaml); writeFileSync(join(t.project, "loadouts.lock.json"), before);
-  expect((await run(["init", "--harness", harness], opts)).code).toBe(2);
-  expect(readFileSync(join(t.project, "loadouts.lock.json"), "utf8")).toBe(before);
-  expect(readFileSync(join(t.project, ".loadouts/work.yml"), "utf8")).toBe(yaml);
-  expect(existsSync(join(t.project, "loadouts.json"))).toBe(false); expect(existsSync(join(t.project, ".loadouts/catalog"))).toBe(false);
+test.each([2, 3, 4, 5, 6, 7, 8])("install rejects development lock v%d without rewriting it", async version => {
+  const t = setup(false);
+  expect((await run(["install"], t.opts)).code).toBe(0);
+  const file = join(t.project, "loadouts.lock.json"), text = JSON.stringify({...t.lock(), version});
+  writeFileSync(file, text);
+  const result = await run(["install"], t.opts);
+  expect(result.code).toBe(1); expect(result.stderr).toContain("invalid lock file");
+  expect(readFileSync(file, "utf8")).toBe(text);
 });
+
+test.each(["init", "install", "update", "harness"])("%s requires a manifest instead of migrating a lock-only project", async command => {
+  const t = setup(false);
+  expect((await run(["install"], t.opts)).code).toBe(0);
+  rmSync(join(t.project, "loadouts.json"));
+  const file = join(t.project, "loadouts.lock.json"), before = readFileSync(file, "utf8");
+  const result = await run(command === "harness" ? ["harness", "add", "codex"] : [command], t.opts);
+  expect(result.code).not.toBe(0); expect(result.stderr).toContain("loadouts.json");
+  expect(existsSync(join(t.project, "loadouts.json"))).toBe(false);
+  expect(readFileSync(file, "utf8")).toBe(before);
+});
+
 
 test("removal and source replacement work when the previous catalog is unavailable", async () => {
   for (const action of ["remove", "replace"]) {
@@ -334,4 +323,27 @@ test.each([".agents/skills", ".claude/skills", ".claude/settings.json", ".mcp.js
   expect((await run(["install"], opts)).code).toBe(0);
   expect(JSON.parse((await run(["status", "--json"], opts)).stdout).needsInstall).toBeUndefined();
   expect((await run(["claude"], opts)).code).toBe(9);
+});
+
+test("format 1 preserves native Codex ownership and unmanaged settings through reinstall and removal", async () => {
+  const t = setup(false); t.save({...t.manifest, harnesses: ["codex"]});
+  const yaml = `name: work\nitems: {server: {mcp: {owned: {command: ${JSON.stringify(process.execPath)}, args: [${JSON.stringify(join(import.meta.dir, "fixtures/mcp-ok.ts"))}]}}}}\n`;
+  writeFileSync(t.file, yaml); expect((await run(["install"], t.opts)).code).toBe(0);
+  const config = join(t.project, ".codex/config.toml");
+  writeFileSync(config, readFileSync(config, "utf8") + '\nstartup_timeout_sec = 42\n[mcp_servers.personal]\ncommand = "personal-server"\n');
+  expect((await run(["install"], t.opts)).code).toBe(0); expect(t.lock().version).toBe(1);
+  let parsed = Bun.TOML.parse(readFileSync(config, "utf8")) as any;
+  expect(parsed.mcp_servers.owned.startup_timeout_sec).toBe(42); expect(parsed.mcp_servers.personal.command).toBe("personal-server");
+  expect((await run(["remove", "work"], t.opts)).code).toBe(0);
+  parsed = Bun.TOML.parse(readFileSync(config, "utf8")) as any;
+  expect(parsed.mcp_servers.owned).toBeUndefined(); expect(parsed.mcp_servers.personal.command).toBe("personal-server");
+});
+
+test("first install preserves unrelated native Codex configuration", async () => {
+  const t = setup(false); t.save({...t.manifest, harnesses: ["codex"]});
+  mkdirSync(join(t.project, ".codex")); writeFileSync(join(t.project, ".codex/config.toml"), 'model = "custom-model"\n[mcp_servers.personal]\ncommand = "personal-server"\n');
+  const result = await run(["install"], t.opts); expect(result.code, result.stderr).toBe(0); expect(t.lock().version).toBe(1);
+  expect(Bun.TOML.parse(readFileSync(join(t.project, ".codex/config.toml"), "utf8"))).toMatchObject({model: "custom-model", mcp_servers: {personal: {command: "personal-server"}}});
+  const before = readFileSync(join(t.project, "loadouts.lock.json"), "utf8"); expect((await run(["install"], t.opts)).stdout.trim()).toBe("Nothing changed.");
+  expect(readFileSync(join(t.project, "loadouts.lock.json"), "utf8")).toBe(before);
 });

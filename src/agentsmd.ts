@@ -27,7 +27,7 @@ export function ensureClaudeImport(project: string): boolean {
 }
 export function renderSection(loaded: { loadout: Loadout; choices: Choices }[], harnesses: Harness[], installed: Record<string, string[]>, installerInstructions = ""): string {
   if (!loaded.length) return "";
-  const lines = [begin, "## Agent loadouts", "", `Managed by \`loadouts\` (${loaded.map(x => x.loadout.name).join(", ")}). Change with \`loadouts help\`, not by editing this section.`, "", "### When to use what", "", "| When | Use |", "| --- | --- |"];
+  const lines = [begin, "## Agent loadouts", "", `Managed by \`loadouts\` (${loaded.map(x => x.loadout.name).join(", ")}). Change with \`loadouts help\`, not by editing this section.`, "", "### When to use what", "", "| When | Use | Source |", "| --- | --- | --- |"];
   const conventions: string[] = [];
   const escape = (s: string) => s.replaceAll("|", "\\|").replaceAll("\n", "<br>");
   for (const { loadout, choices } of loaded) {
@@ -37,7 +37,8 @@ export function renderSection(loaded: { loadout: Loadout; choices: Choices }[], 
       for (const h of harnesses) for (const ref of row.use) {
         const [type, name] = ref.split(":");
         for (const a of active) {
-          if (!name && a.id.split("/")[1] !== ref) continue;
+          const path = a.id.slice(loadout.name.length + 1);
+          if (!name && path !== ref && !path.startsWith(ref + "/")) continue;
           const s = sourceFor(a.item, h), found: string[] = [];
           if (s.installer && (!name || type === "mcp" && name === "codebase-memory-mcp")) found.push("MCP server `codebase-memory-mcp`");
           if (s.plugin && (!name || (type === "plugin" && s.plugin.split("@")[0] === name))) found.push(`plugin \`${s.plugin.split("@")[0]}\``);
@@ -59,10 +60,10 @@ export function renderSection(loaded: { loadout: Loadout; choices: Choices }[], 
         }
       }
       const text = [...labels].map(([label, hs]) => label + (harnesses.length > 1 && hs.length !== harnesses.length ? ` (${hs[0] === "codex" ? "Codex" : "Claude Code"})` : ""));
-      if (text.length) lines.push(`| ${escape(row.when)} | ${text.map(escape).join("; ")} |`);
+      if (text.length) lines.push(`| ${escape(row.when)} | ${text.map(escape).join("; ")} | ${escape(loadout.name + "/" + row.use.join(", "))} |`);
     }
     if (loadout.conventions) conventions.push(`- **${loadout.name}:** ${loadout.conventions}`);
-    for (const a of active) if (a.item.conventions) conventions.push(`- **${a.id.split("/").at(-1)}:** ${a.item.conventions}`);
+    for (const a of active) if (a.item.conventions) conventions.push(`- **${a.id}:** ${a.item.conventions}`);
   }
   if (conventions.length) lines.push("", "### Conventions", "", ...conventions);
   if (installerInstructions.trim()) lines.push("", installerInstructions.trim());
