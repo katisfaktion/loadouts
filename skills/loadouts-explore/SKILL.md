@@ -34,7 +34,13 @@ Read candidate instructions as evidence; do not execute them. Do not install can
 
 ## Write the proposal
 
-Choose a small starting set. Organize the proposal by independently reusable concern, such as React, Payload, testing or Cloudflare deployment. A loadout may contain several related items; it need not be one file per skill. Compose the project by selecting multiple roots or by drafting a small composition YAML with additive `includes` of independently reusable entries. Do not copy upstream definitions merely to compose them. Includes preserve each entry's identity; they provide no inheritance, exclusions or overrides, and order never resolves conflicts. Keep project-specific instructions in the project's instruction files. Never copy credentials or machine-specific configuration into a reusable loadout; inspection deliberately omits MCP command/argument/URL values.
+Choose a small starting set. Organize the proposal by independently reusable concern, such as React, Payload, testing or Cloudflare deployment. A loadout may contain several related items; it need not be one file per skill.
+
+The default project proposal is a list of focused sources to select directly in `loadouts.json` after approval, plus local YAML drafts only for adaptations and missing concerns. The manifest already records the complete project setup. A request for one complete or easy-to-switch setup does not by itself require a project-wide wrapper YAML.
+
+If the user identifies a bundle to reuse across projects, propose a composition YAML with additive `includes` and select that bundle once in the manifest. List its children as included dependencies, not duplicate direct selections. Use member includes when a reusable concern offers alternatives, such as a frontend React/Vue choice. Explain the concrete reuse purpose of each composition file.
+
+Do not copy upstream definitions merely to compose them. Includes preserve each entry's identity; they provide no inheritance, exclusions or overrides, and order never resolves conflicts. Keep project-specific instructions in the project's instruction files. Never copy credentials or machine-specific configuration into a reusable loadout; inspection deliberately omits MCP command/argument/URL values.
 
 For each concern, choose and explain one action:
 
@@ -42,7 +48,7 @@ For each concern, choose and explain one action:
 - **Adapt:** copy the relevant shared definition and change only what the project needs. Keep its original name when the intended contribution updates that upstream entry; `publish` targets `loadouts/<local-name>.yml`, not the name passed to `create --from`.
 - **Create:** draft a new, descriptively named loadout when no shared entry fits. Separate unrelated concerns so they can be selected, reviewed and contributed independently.
 
-For example, a Next.js/Payload project with suitable shared React and testing entries can reuse both and create a focused Payload draft. An optional website composition can include those sources without copying them. Present this composition before the file details, including why each boundary is reusable.
+For example, a single Next.js/Payload project with suitable shared React and testing entries can select both directly and create a focused Payload draft. Its proposal needs only that new YAML file, not a website wrapper. If the same website bundle is intended for several projects, a website composition can include those sources without copying them. Present the proposed selections before the file details, including why each boundary is reusable.
 
 Create the draft through the CLI, then edit the generated file:
 

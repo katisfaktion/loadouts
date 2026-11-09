@@ -22,8 +22,8 @@ import { inspectProject, inspectionRoot } from "./inspect";
 import explorationSkill from "../skills/loadouts-explore/SKILL.md" with {type: "text"};
 
 export const COMMANDS: Record<string, { brief: string; hint?: string; summary: string; examples: string[]; run: (args: ParsedCommand) => Promise<number> }> = {
-  explore: {brief: "Explore the stack and propose a loadout.",
-    summary: "Print agent guidance for catalog-first reuse and additive composition: inspect include closures, search remaining gaps with npx skills find, and review conventions/routing against project instructions with source attribution and unresolved user decisions. Does not launch an agent or install anything.",
+  explore: {brief: "Explore the stack and propose reusable loadouts.",
+    summary: "Print agent guidance to reuse suitable catalog entries, search remaining gaps with npx skills find, and create focused drafts. Default to direct manifest selections; use composition YAML for reusable bundles. Review included instructions and conventions for conflicts. Does not launch an agent or install anything.",
     examples: ["loadouts explore"],
     run: async args => {
       console.log(explorationSkill); return 0;

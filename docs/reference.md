@@ -241,7 +241,9 @@ Consumers can select `github:OWNER/REPO/testing` or an explicit `github:OWNER/RE
 
 ### Compose and adapt reusable entries
 
-Select multiple focused roots in the project manifest, or use a small composition with additive `includes`. The manifest records direct selections only; included descendants retain their own identities. Keep related capabilities together—React conventions and React skills may belong in one entry—while keeping independently reusable concerns such as Payload and deployment separate. Reuse suitable shared entries unchanged instead of copying them all locally.
+By default, select focused loadouts directly in the project manifest. It already records the complete project setup, so a project-wide wrapper YAML is unnecessary. When a bundle will be reused across projects, put it in a composition with additive `includes` and select that bundle once. List its children as included dependencies rather than duplicate direct selections. The manifest records direct selections only; included descendants retain their own identities.
+
+Keep related capabilities together—React conventions and React skills may belong in one entry—while keeping independently reusable concerns such as Payload and deployment separate. Reuse suitable shared entries unchanged instead of copying them all locally. Member includes also let reusable concerns offer alternatives, such as a frontend React/Vue choice.
 
 A composition can omit `items` when `includes` is nonempty:
 

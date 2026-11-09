@@ -1,12 +1,17 @@
 # loadouts
 
+> [!NOTE]
+> The initial version of this README was written by an AI agent.
+
 **Reusable agent setups for Claude Code and Codex.**
 
 Give each project the skills, tools and working conventions it needs. Declare the setup once, commit it alongside your code, and restore it with `loadouts install`.
 
-A **loadout** is a YAML file that brings together skills, plugins, MCP servers and instructions for a kind of work. Keep loadouts in your project while you refine them, then share proven ones through a GitHub catalog.
+A **loadout** works like a saved equipment setup in a game. Skills, plugins and MCP servers are the individual pieces of gear; conventions and routing tell your agent how to use them. A loadout puts them together into a setup you can equip and switch to for the work ahead, declared in one YAML file.
 
-Compose a project from focused loadouts—such as React, Payload, testing and deployment—selected together in `loadouts.json` or referenced by a small composition loadout through additive `includes`. Each keeps its identity and can be reused and improved independently; includes do not override conflicting definitions or choices. See [composition and choices](docs/reference.md#compose-and-adapt-reusable-entries).
+![A design loadout combines frontend design, design-system and UI-review skills, optional Storybook, routing and conventions. It equips Claude Code and Codex and writes conventions and skill routing to AGENTS.md.](docs/assets/loadouts-overview.png)
+
+Pick focused loadouts for the work your project needs, such as frontend development, testing and deployment. Refine your own locally, then share the ones that prove useful through a GitHub catalog.
 
 - **Reuse what works.** Select shared loadouts or write your own project-local definitions.
 - **Keep the team in sync.** Commit a manifest and locks so a new checkout can restore the declared setup.
@@ -119,12 +124,23 @@ Each file contains one loadout, with `name` matching its filename: `react.yml` d
 
 This shared layout is different from a consuming project's `.loadouts/catalog/` directory. `publish` copies a verified local `.loadouts/catalog/react.yml` to `loadouts/react.yml` in the catalog and proposes it through a PR.
 
-See [maintaining a catalog](docs/reference.md#shared-catalog-repositories) for a complete entry, local validation, version selection and contribution review.
+For a working example, browse [katisfaktion/agent-loadouts](https://github.com/katisfaktion/agent-loadouts). It is the author's catalog of setups used in real projects.
+
+To share your own, follow the [catalog authoring guide](docs/reference.md#shared-catalog-repositories).
 
 ## Everyday workflow
 
+Loadouts is designed to be **agent-first**. Tell your coding agent what you want to do; it can discover the workflow through `loadouts help`, inspect the current setup and use the CLI to make the changes you approve. You can also run every command yourself.
+
+For example:
+
+> Review this project's loadouts for the feature we're about to build. Reuse suitable catalog entries and propose anything missing before installing it.
+
+The agent uses `loadouts explore` for exploration guidance and JSON output to inspect the setup. It creates and validates YAML drafts with the CLI, and uses selection commands to manage the manifest and locks. You decide when a proposal is ready to apply or contribute back to a catalog.
+
 | What you want to do | Command |
 | --- | --- |
+| Explore a setup with your agent | `loadouts explore` (prints guidance for the agent) |
 | Restore a checkout or apply edits to selected local loadouts | `loadouts install` |
 | See selected loadouts and installation state | `loadouts status` |
 | Diagnose missing components or configuration conflicts | `loadouts doctor` |
@@ -158,7 +174,9 @@ Ask your agent:
 
 > I want to create an agent loadout for this project.
 
-`loadouts explore` provides the agent with an [exploration guide](skills/loadouts-explore/SKILL.md). It directs the agent to inspect the project, existing setup and relevant catalog entries with their selected active include closure before searching remaining gaps with `npx skills find`. It reviews conventions and routing against project instructions, attributes conflicts to their sources, and proposes a composition: reuse suitable shared loadouts unchanged, adapt those that need improvements, and create separate local drafts for missing concerns. It uses `loadouts create` and `loadouts validate` for each draft. Prefer existing concern loadouts, conditional includes for reusable alternatives, and nested groups for cohesive options. Review and verify only the selected active closure; a successful installation does not verify inactive alternatives.
+The agent reads `loadouts explore`, inspects your project and existing setup, and looks for suitable catalog loadouts first. It searches for missing capabilities with `npx skills find`, checks candidate instructions, and proposes focused drafts where needed. It also flags conflicting conventions for you to resolve.
+
+By default, the proposal selects those loadouts directly in `loadouts.json`. A separate composition YAML is useful when the bundle itself will be reused across projects; it can include the smaller loadouts without copying them. Your manifest then selects that bundle once.
 
 Exploration stops at proposals. It does not install drafts or claim they have been proven on a real task. Review them, select the approved sources with `loadouts add`, and try them on your own work.
 
@@ -172,8 +190,6 @@ Add `--yes` to push a contribution branch and open a pull request using authenti
 
 For an adapted loadout, ask your agent to compare it with its original revision and current upstream before proposing the change. Keep the upstream name to update the same catalog entry. The agent reviews and reconciles the differences; `publish` copies the whole file and does not merge upstream changes automatically.
 
-Successful installs write lock format 1 with active choices and dependency edges. Development lock formats are not supported. Publication checks all declared include sources for portability, including inactive branches, while verification covers selected active choices only.
-
 ## What can a loadout include?
 
 - **Skills** installed through `npx skills`. Prefer individual skills when they provide what you need.
@@ -182,7 +198,9 @@ Successful installs write lock format 1 with active choices and dependency edges
 - **MCP servers**, working conventions and routing instructions that tell agents when to use each part of the setup.
 - **Installer integrations**, like codebase-memory, that reuse an existing global installation and configure and index the project.
 
-Loadouts can offer mutually exclusive choices (`one_of`), optional combinations (`any_of`), and agent-specific overrides. Keep related options together through nested member `items`; reuse independent alternatives through member `includes`, such as a frontend React/Vue choice. Choice commands accept slash paths such as `loadouts switch testing/languages/python/framework unittest`. Select the parent language first; changing a parent clears its deselected descendant requests and releases artifacts no longer needed by any active owner. See the [configuration reference](docs/reference.md) for examples and integration requirements.
+Loadouts can offer choices, such as which testing framework to use, and optional extras you can enable when needed. They can also include other loadouts, so a frontend setup can offer React or Vue without duplicating either definition.
+
+See [composition and choices](docs/reference.md#compose-and-adapt-reusable-entries) for YAML examples.
 
 The [loadout YAML schema](schemas/v1/loadout.schema.json) and [manifest schema](schemas/v1/manifest.schema.json) support editors and agents. `loadouts create` adds a schema URL pinned to the CLI release that created the draft. Catalogs can release independently of the CLI.
 
