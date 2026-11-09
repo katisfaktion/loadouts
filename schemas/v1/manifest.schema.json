@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Loadouts project manifest",
+  "type": "object",
+  "required": [
+    "harnesses",
+    "loadouts"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "harnesses": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "claude-code",
+          "codex"
+        ]
+      }
+    },
+    "loadouts": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]*$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "source"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "file:./.loadouts/catalog/name.yml or github:owner/repo/name[@ref]. Absolute local Git catalogs use file:/path#name[@ref].",
+            "pattern": "^(file:\\./\\.loadouts/catalog/[A-Za-z0-9_-][\\w.-]*\\.yml|github:[A-Za-z0-9_-][\\w.-]*/[A-Za-z0-9_-][\\w.-]*/[A-Za-z0-9_-][\\w.-]*(@[^\\s@#]+)?|file:/[^#@]+#[A-Za-z0-9_-][\\w.-]*(@[^\\s@#]+)?)$"
+          },
+          "choices": {
+            "type": "object",
+            "propertyNames": {
+              "pattern": "^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*$"
+            },
+            "additionalProperties": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]*$"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

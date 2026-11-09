@@ -1,0 +1,199 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Loadout",
+  "description": "A loadouts catalog entry. The CLI additionally checks filename agreement, default member names and routing targets.",
+  "type": "object",
+  "required": ["name"],
+  "anyOf": [{"required": ["items"]}, {"required": ["includes"], "properties": {"includes": {"minProperties": 1}}}],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Must match the .yml filename without its extension."
+    },
+    "conventions": { "$ref": "#/definitions/text" },
+    "includes": {
+      "type": "object",
+      "propertyNames": {"$ref": "#/definitions/selectionIdentifier"},
+      "additionalProperties": {"$ref": "#/definitions/selection"}
+    },
+    "items": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/definitions/identifier" },
+      "additionalProperties": {
+        "oneOf": [
+          { "$ref": "#/definitions/item" },
+          { "$ref": "#/definitions/oneOfGroup" },
+          { "$ref": "#/definitions/anyOfGroup" }
+        ]
+      }
+    },
+    "routing": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["when", "use"],
+        "additionalProperties": false,
+        "properties": {
+          "when": { "$ref": "#/definitions/text" },
+          "use": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(?:[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*|(?:skill|mcp|plugin):[A-Za-z0-9_.-]+)$",
+              "description": "A declared item or group key, or skill:name, mcp:name or plugin:name."
+            }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "selectionIdentifier": {"type": "string", "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]*$"},
+    "selection": {
+      "type": "object",
+      "required": ["source"],
+      "additionalProperties": false,
+      "properties": {
+        "source": {"type": "string", "pattern": "^(?:file:\\./\\.loadouts/catalog/[A-Za-z0-9_-][A-Za-z0-9_.-]*\\.yml|github:[A-Za-z0-9_-][\\w.-]*/[A-Za-z0-9_-][\\w.-]*/[A-Za-z0-9_-][\\w.-]*(?:@[^\\s@#]+)?|file:/[^#@]+#[A-Za-z0-9_-][\\w.-]*(?:@[^\\s@#]+)?)$"},
+        "choices": {
+          "type": "object",
+          "propertyNames": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*$"},
+          "additionalProperties": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/definitions/selectionIdentifier"}}
+        }
+      }
+    },
+
+    "text": { "type": "string", "minLength": 1 },
+    "identifier": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+$" },
+    "packageSkills": {
+      "type": "object",
+      "required": [
+        "include"
+      ],
+      "additionalProperties": false,
+      "description": "Companion skills from installed npm packages. Install follows the installed package version; it does not install libraries.",
+      "properties": {
+        "include": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^(?:@[a-z0-9_-][a-z0-9_.-]*/)?[a-z0-9_-][a-z0-9_.-]*(?:#[A-Za-z0-9_-][A-Za-z0-9_.-]*)?$"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^(?:@[a-z0-9_-][a-z0-9_.-]*/)?[a-z0-9_-][a-z0-9_.-]*(?:#[A-Za-z0-9_-][A-Za-z0-9_.-]*)?$"
+          }
+        }
+      }
+    },
+    "skills": {
+      "type": "array",
+      "description": "owner/repo installs all skills; owner/repo@skill installs one skill.",
+      "items": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:@[A-Za-z0-9_.-]+)?$" }
+    },
+    "mcp": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/definitions/identifier" },
+      "additionalProperties": {
+        "type": "object",
+        "description": "A stdio command or HTTP URL. {project} expands to the project path.",
+        "additionalProperties": false,
+        "oneOf": [{ "required": ["command"] }, { "required": ["url"] }],
+        "properties": {
+          "command": { "$ref": "#/definitions/text" },
+          "args": { "type": "array", "items": { "$ref": "#/definitions/text" } },
+          "env": { "type": "object", "additionalProperties": { "type": "string" } },
+          "url": { "type": "string", "pattern": "^https?://" }
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "installer": { "type": "string", "enum": ["codebase-memory"], "description": "Reuse the installed global CLI, configure this project and index it. Declare other components in separate items." },
+        "skills": { "$ref": "#/definitions/skills" },
+        "packageSkills": { "$ref": "#/definitions/packageSkills" },
+        "mcp": { "$ref": "#/definitions/mcp" }
+      }
+    },
+    "claudeSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "dependencies": { "marketplace": ["plugin"] },
+      "properties": {
+        "installer": { "type": "string", "enum": ["codebase-memory"], "description": "Reuse the installed global CLI, configure this project and index it. Declare other components in separate items." },
+        "skills": { "$ref": "#/definitions/skills" },
+        "packageSkills": { "$ref": "#/definitions/packageSkills" },
+        "mcp": { "$ref": "#/definitions/mcp" },
+        "plugin": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+@[A-Za-z0-9_.-]+$" },
+        "marketplace": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" }
+      }
+    },
+    "codexSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "dependencies": { "marketplace": ["plugin"], "plugin": ["marketplace"] },
+      "properties": {
+        "installer": { "type": "string", "enum": ["codebase-memory"], "description": "Reuse the installed global CLI, configure this project and index it. Declare other components in separate items." },
+        "skills": { "$ref": "#/definitions/skills" },
+        "packageSkills": { "$ref": "#/definitions/packageSkills" },
+        "mcp": { "$ref": "#/definitions/mcp" },
+        "plugin": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+@[A-Za-z0-9_.-]+$" },
+        "marketplace": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" }
+      }
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "installer": { "type": "string", "enum": ["codebase-memory"], "description": "Reuse the installed global CLI, configure this project and index it. Declare other components in separate items." },
+        "skills": { "$ref": "#/definitions/skills" },
+        "packageSkills": { "$ref": "#/definitions/packageSkills" },
+        "mcp": { "$ref": "#/definitions/mcp" },
+        "conventions": { "$ref": "#/definitions/text" },
+        "items": { "$ref": "#/properties/items" },
+        "includes": { "$ref": "#/properties/includes" },
+        "claude": { "$ref": "#/definitions/claudeSource", "description": "Overrides common source fields for Claude Code." },
+        "codex": { "$ref": "#/definitions/codexSource", "description": "Overrides common source fields for Codex. Plugins require an explicit marketplace repository." }
+      }
+    },
+    "members": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/definitions/identifier" },
+      "additionalProperties": { "$ref": "#/definitions/item" }
+    },
+    "oneOfGroup": {
+      "type": "object",
+      "description": "Exactly one member is active.",
+      "required": ["one_of", "default"],
+      "additionalProperties": false,
+      "properties": {
+        "one_of": { "$ref": "#/definitions/members" },
+        "default": { "$ref": "#/definitions/identifier", "description": "The name of a member in one_of." }
+      }
+    },
+    "anyOfGroup": {
+      "type": "object",
+      "description": "Any subset of members may be active, including none.",
+      "required": ["any_of", "default"],
+      "additionalProperties": false,
+      "properties": {
+        "any_of": { "$ref": "#/definitions/members" },
+        "default": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/definitions/identifier" },
+          "description": "Distinct member names from any_of."
+        }
+      }
+    }
+  }
+}
