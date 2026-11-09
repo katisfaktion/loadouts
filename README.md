@@ -15,7 +15,16 @@ Compose a project from focused loadouts—such as React, Payload, testing and de
 
 ## Install
 
-Download the binary for your platform from [GitHub Releases](https://github.com/katisfaktion/loadouts/releases), rename it to `loadouts` (`loadouts.exe` on Windows), and put it on your `PATH`. On Linux and macOS, make it executable:
+With Node.js 22 or newer:
+
+```sh
+npm install -g @katisfaktion/loadouts
+loadouts help
+```
+
+npm installs the native binary for your platform through optional dependencies. Keep optional dependencies enabled; no Bun installation or postinstall download is needed. Supported platforms are Linux (glibc) and macOS on x64/arm64, and Windows on x64.
+
+Alternatively, download the binary for your platform from [GitHub Releases](https://github.com/katisfaktion/loadouts/releases), rename it to `loadouts` (`loadouts.exe` on Windows), and put it on your `PATH`. On Linux and macOS, make it executable:
 
 ```sh
 chmod +x loadouts
@@ -192,6 +201,10 @@ bun run build
 
 The binary is written to `dist/loadouts`; put it on your `PATH` to use it elsewhere. Tests use temporary homes and fixtures without calling external services or real skill installers. CI runs tests on pull requests.
 
-For a versioned change, add a descriptive Changeset with `bunx changeset`. Changesets opens a release PR; after a maintainer merges it, CI publishes a Git tag and platform binaries. Nothing is published to npm.
+For a versioned change, add a descriptive Changeset with `bunx changeset`. Changesets opens a release PR; after a maintainer merges it, CI builds native binaries, publishes npm packages, and creates the GitHub release and tag. The private development package stays named `loadouts`; `scripts/package-npm.ts` produces the public `@katisfaktion/loadouts` package and five platform packages under `dist/npm/`, all at the Changesets version. The public package contains a Node launcher with exact optional dependencies on those binaries, without the development dependencies or Bun source files.
 
 Repository maintainers must configure `RELEASE_TOKEN` with contents and pull-request write access so automated release PRs trigger CI. Release automation does not merge PRs.
+
+For the first npm release, configure a GitHub Actions `NPM_TOKEN` secret with permission to create and publish public packages in the `@katisfaktion` scope and bypass 2FA for automation. The account must own that scope. After publication, configure an [npm trusted publisher](https://docs.npmjs.com/trusted-publishers/) on each of the six packages for GitHub owner `katisfaktion`, repository `loadouts`, workflow `release.yml`, with direct publishing allowed. You can then remove `NPM_TOKEN`; the workflow supports OIDC and publishes provenance. `RELEASE_TOKEN` authenticates GitHub and cannot replace npm credentials.
+
+The binary packages are `@katisfaktion/loadouts-linux-x64`, `-linux-arm64`, `-darwin-x64`, `-darwin-arm64`, and `-win32-x64`. They publish before `@katisfaktion/loadouts`; the GitHub release is created last. If a release fails midway, fix the cause and rerun the failed workflow: versions already present on npm are skipped, while registry or authentication errors stop publication. Tests run on the PR, not again after merging.

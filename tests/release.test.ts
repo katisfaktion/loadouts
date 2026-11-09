@@ -7,6 +7,19 @@ const workflow = Bun.YAML.parse(readFileSync(join(repo, ".github/workflows/relea
 const check = workflow.jobs.release.steps.find((step: any) => step.id === "tag").run;
 const releasePr = {merged_at: "2026-11-05T00:00:00Z", base: {ref: "main"}, head: {ref: "changeset-release/main"}};
 
+test("npm publication runs only for a pending release and precedes its GitHub tag", () => {
+  const steps = workflow.jobs.release.steps;
+  const pack = steps.findIndex((step: any) => step.name === "Package for npm");
+  const publish = steps.findIndex((step: any) => step.name === "Publish to npm");
+  const github = steps.findIndex((step: any) => step.name === "Create GitHub release");
+  expect(pack).toBeGreaterThan(steps.findIndex((step: any) => step.name === "Build binaries"));
+  expect(publish).toBeGreaterThan(pack);
+  expect(github).toBeGreaterThan(publish);
+  for (const index of [pack, publish, github]) expect(steps[index].if).toBe("steps.tag.outputs.missing == 'true'");
+  expect(workflow.permissions["id-token"]).toBe("write");
+  expect(steps[github].run).toContain("dist/loadouts-bun-*");
+});
+
 test.each([
   ["ordinary push", [], false, false],
   ["unmerged release PR", [{...releasePr, merged_at: null}], false, false],

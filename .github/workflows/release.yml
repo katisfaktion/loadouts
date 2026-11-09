@@ -5,6 +5,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  id-token: write
 concurrency:
   group: release
   cancel-in-progress: false
@@ -19,6 +20,10 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
       - run: bun install --frozen-lockfile
       - uses: changesets/action@v2
         id: changesets
@@ -44,9 +49,17 @@ jobs:
           for target in bun-linux-x64 bun-linux-arm64 bun-darwin-x64 bun-darwin-arm64 bun-windows-x64; do
             bun build --compile --target="$target" src/cli.ts --outfile "dist/loadouts-$target"
           done
+      - name: Package for npm
+        if: steps.tag.outputs.missing == 'true'
+        run: bun scripts/package-npm.ts
+      - name: Publish to npm
+        if: steps.tag.outputs.missing == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: bun scripts/publish-npm.ts
       - name: Create GitHub release
         if: steps.tag.outputs.missing == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.tag.outputs.version }}
-        run: gh release create "v$VERSION" dist/* --target "$GITHUB_SHA" --generate-notes
+        run: gh release create "v$VERSION" dist/loadouts-bun-* --target "$GITHUB_SHA" --generate-notes
