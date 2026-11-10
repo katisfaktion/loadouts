@@ -5,9 +5,11 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { cacheDir, writeIfChanged } from "./paths";
 
-export async function skills(cwd: string, args: string[]) {
+export async function skills(cwd: string, args: string[], lockVersion: SkillLock["version"] = 2) {
   const npmPrefix = join(cacheDir(), "npm");
-  const prefix = process.env.LOADOUTS_SKILLS_CMD?.split(/ +/) ?? ["npx", "--prefix", npmPrefix, "-y", "skills"];
+  // The two formats hash identical skill contents differently.
+  const installer = lockVersion === 1 ? "skills@1.7.6" : "skills@1.8.0";
+  const prefix = process.env.LOADOUTS_SKILLS_CMD?.split(/ +/) ?? ["npx", "--prefix", npmPrefix, "-y", installer];
   if (!Bun.which(prefix[0]!)) throw new CliError(`${prefix[0]} not found on PATH`, 3, "install Node.js so npx is available");
   // Isolate npm's project checks while skills still runs in the target cwd.
   if (!process.env.LOADOUTS_SKILLS_CMD) mkdirSync(npmPrefix, {recursive: true});
@@ -15,9 +17,9 @@ export async function skills(cwd: string, args: string[]) {
   const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
   return {code, stdout, stderr};
 }
-export async function addSkills(project: string, identifier: string, h: Harness): Promise<string[]> {
+export async function addSkills(project: string, identifier: string, h: Harness, version = readSkillLock(project).version): Promise<string[]> {
   const [repo, skill] = identifier.split("@");
-  const result = await skills(project, ["add", repo!, "-s", skill ?? "*", "-a", h, "-y", "--json"]);
+  const result = await skills(project, ["add", repo!, "-s", skill ?? "*", "-a", h, "-y", "--json"], version);
   let rows: {name: string; status: string}[] = [];
   try {
     const parsed = JSON.parse(result.stdout);
@@ -32,7 +34,7 @@ export async function addSkills(project: string, identifier: string, h: Harness)
   return installed;
 }
 
-export type SkillLock = {version: 1; skills: Record<string, {source: string; sourceType: string; computedHash: string; [key: string]: unknown}>};
+export type SkillLock = {version: 1 | 2; skills: Record<string, {source: string; sourceType: string; computedHash: string; [key: string]: unknown}>};
 export const validName = (name: string) => /^[\w.-]+$/.test(name) && ![".", ".."].includes(name);
 const recovery = "restore skills-lock.json and verified skill folders from version control or backup; use loadouts update only to accept newer contents";
 export function checkSkillDirectories(project: string): void {
@@ -42,14 +44,20 @@ export function checkSkillDirectories(project: string): void {
     } catch (e: any) { if (e.code !== "ENOENT") throw e; }
   }
 }
-export function readSkillLock(project: string): SkillLock {
+export function readSkillLock(project: string, expectedVersion?: SkillLock["version"]): SkillLock {
   const file = join(project, "skills-lock.json");
-  if (!existsSync(file)) return {version: 1, skills: Object.create(null)};
+  if (!existsSync(file)) return {version: expectedVersion ?? 2, skills: Object.create(null)};
   try {
     const lock = JSON.parse(readFileSync(file, "utf8"));
-    if (lock?.version !== 1 || !lock.skills || typeof lock.skills !== "object" || Array.isArray(lock.skills) || Object.entries(lock.skills).some(([name, e]: [string, any]) => !validName(name) || !e || typeof e.source !== "string" || !e.source || typeof e.sourceType !== "string" || typeof e.computedHash !== "string" || !/^[a-f0-9]{64}$/.test(e.computedHash))) throw new Error();
+    if (typeof lock?.version !== "number") throw new Error();
+    if (lock.version !== 1 && lock.version !== 2) throw new CliError(`unsupported skills-lock.json version ${lock.version}`, 1, "use a loadouts release that supports this lockfile");
+    if (expectedVersion && lock.version !== expectedVersion) throw new CliError(`skills installer wrote lock version ${lock.version}, expected ${expectedVersion}`, 1, "unset LOADOUTS_SKILLS_CMD to use the compatible installer");
+    if (!lock.skills || typeof lock.skills !== "object" || Array.isArray(lock.skills) || Object.entries(lock.skills).some(([name, e]: [string, any]) => !validName(name) || !e || typeof e.source !== "string" || !e.source || typeof e.sourceType !== "string" || typeof e.computedHash !== "string" || !/^[a-f0-9]{64}$/.test(e.computedHash))) throw new Error();
     return {...lock, skills: Object.assign(Object.create(null), lock.skills)};
-  } catch { throw new CliError("invalid skills-lock.json", 1, recovery); }
+  } catch (e) {
+    if (e instanceof CliError) throw e;
+    throw new CliError("invalid skills-lock.json", 1, recovery);
+  }
 }
 export function writeSkillLock(project: string, lock: SkillLock): boolean {
   return writeIfChanged(join(project, "skills-lock.json"), JSON.stringify(lock, (_key, value) => value && typeof value === "object" && !Array.isArray(value) ? Object.fromEntries(Object.keys(value).sort().map(k => [k, value[k]])) : value, 2) + "\n");
@@ -98,14 +106,14 @@ export async function installSkills(project: string, identifier: string, h: Harn
   try {
     let fetched: string[], failure: unknown, next = lock;
     if (restore) {
-      writeFileSync(join(stage, "skills-lock.json"), JSON.stringify({version: 1, skills: Object.fromEntries(missing.map(name => [name, lock.skills[name]]))}));
-      const result = await skills(stage, ["experimental_install", "--frozen-lockfile"]);
+      writeFileSync(join(stage, "skills-lock.json"), JSON.stringify({version: lock.version, skills: Object.fromEntries(missing.map(name => [name, lock.skills[name]]))}));
+      const result = await skills(stage, ["experimental_install", "--frozen-lockfile"], lock.version);
       if (result.code || missingSkills(stage, missing, "codex")) throw new CliError(`frozen skill restore failed for ${identifier}: ${result.stderr.trim() || result.stdout.trim() || "installer did not restore every requested skill"}`, 1, recovery);
       fetched = missing;
     } else {
-      try { fetched = await addSkills(stage, identifier, "codex"); }
+      try { fetched = await addSkills(stage, identifier, "codex", lock.version); }
       catch (e) { if (!(e instanceof CliError) || !e.installed) throw e; fetched = e.installed; failure = e; }
-      next = readSkillLock(stage);
+      next = readSkillLock(stage, lock.version);
       for (const name of fetched) {
         checkSource(name);
         if (!next.skills[name] || next.skills[name].source !== repo || missingSkills(stage, [name], "codex")) throw new CliError(`installer did not record skill ${name} in skills-lock.json`, 1, recovery);
@@ -149,7 +157,7 @@ export function removeSkillLinks(project: string, names: string[]): void {
 }
 export async function removeSkills(project: string, names: string[], h: Harness): Promise<void> {
   if (!names.length) return;
-  const r = await skills(project, ["remove", ...names, "-a", h, "-y"]);
+  const r = await skills(project, ["remove", ...names, "-a", h, "-y"], readSkillLock(project).version);
   if (r.code) throw new CliError(`npx skills could not remove ${names.join(", ")}: ${r.stderr.trim()}`, 1, "check the installed skills with npx skills ls, then retry");
 }
 export async function listSkills(opts: {global: boolean; cwd: string}): Promise<{name: string; source: string | null}[]> {

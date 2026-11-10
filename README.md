@@ -38,7 +38,7 @@ chmod +x loadouts
 You will also need:
 
 - Git for shared catalogs.
-- Node.js with `npx` for skill installation.
+- Node.js 22.20.0 or newer with `npx` for skill installation.
 - Claude Code, Codex, or both, installed and signed in.
 - The GitHub CLI (`gh`) if you want to contribute loadouts through pull requests.
 

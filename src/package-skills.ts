@@ -63,9 +63,9 @@ export async function syncPackageSkills(project: string, lock: Lock, loaded: Rec
       writeFileSync(join(stage, "package.json"), JSON.stringify({private: true, dependencies: {[pkg]: "*"}}));
       mkdirSync(dirname(join(stage, "node_modules", pkg)), {recursive: true});
       symlinkSync(current.dir, join(stage, "node_modules", pkg));
-      const result = await skills(stage, ["experimental_sync", "--copy", "--no-remote", "--no-cleanup", "--no-frozen-lockfile", "-a", "codex", "-y", "--include", pkg]);
+      const result = await skills(stage, ["experimental_sync", "--copy", "--no-remote", "--no-cleanup", "--no-frozen-lockfile", "-a", "codex", "-y", "--include", pkg], native.version);
       if (result.code) throw new CliError(`could not sync package skills from ${pkg}: ${result.stderr.trim() || result.stdout.trim()}`, 1, "repair the installed package and retry loadouts install");
-      const discovered = readSkillLock(stage).skills;
+      const discovered = readSkillLock(stage, native.version).skills;
       for (const request of selected) for (const selector of request.policy.include) {
         const [source, name] = selector.split("#");
         if (source === pkg && name && selectsPackageSkill(request.policy, pkg, name) && !Object.hasOwn(discovered, name)) throw new CliError(`package companion ${selector} was not found`, 1, "check the installed package's skill names or adjust the loadout selection");

@@ -4,6 +4,8 @@ For installation and a first project, start with the [README](../README.md). Thi
 
 ## Agent configuration and diagnostics
 
+`loadouts install` uses a pinned skills CLI. New projects write version 2 of `skills-lock.json` with skills 1.8.0. Existing version-1 locks keep using skills 1.7.6 for changes and frozen restores because the two versions calculate different hashes for the same files. This choice is independent of the version of `loadouts.lock.json`.
+
 `setup` writes machine defaults and a `LOADOUTS.md` help hint beside each selected harness's global instructions. It adds `@LOADOUTS.md` to `~/.claude/CLAUDE.md` and an absolute `@` reference to `~/.codex/AGENTS.md`, preserving existing text. Other project commands find `loadouts.json` or its lock in the current directory or its nearest ancestor. Skills are installed through `npx skills`; no runtime packages are bundled separately.
 
 Check in `loadouts.json`, `loadouts.lock.json`, `skills-lock.json`, `.loadouts/catalog/*.yml`, generated project settings and agent instructions, including the `.loadouts/.gitkeep` marker. Downloaded `.agents/skills/` folders and `.claude/skills/` links may be ignored or committed; keep any project-authored skills in version control. `loadouts install` restores missing locked files and harness links. Commit native Codex configuration in `.codex/config.toml`, profiles in `.codex/agents/` and hooks in `.codex/hooks.json`. Installer receipts and generated Claude assets remain ignored. Authentication, plugin caches and new sessions use the normal Codex home (or your explicitly set `CODEX_HOME`). Existing `.loadouts/codex-home/` remains ignored and untouched as historical session storage; install does not move or delete old sessions.

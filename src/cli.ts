@@ -85,7 +85,7 @@ export const COMMANDS: Record<string, { brief: string; hint?: string; summary: s
     },
   },
   install: {brief: "Install declared loadouts and restore missing setup.",
-    summary: "Resolve direct selections and their active include closure, apply reachable local edits, and restore missing skills from skills-lock.json with frozen hashes. Includes map actual names to {source, choices?}; use full explicit sources and group-path-to-member arrays. Member includes activate only with their containing branch. Different sources or explicit choices for the same name conflict; include order provides no overrides. Plugin versions remain best effort.",
+    summary: "Resolve direct selections and their active include closure, apply reachable local edits, and restore missing skills from skills-lock.json with frozen hashes. New skills locks use v2. Existing v1 locks retain their format. Loadouts selects the pinned installer automatically. Includes map actual names to {source, choices?}; use full explicit sources and group-path-to-member arrays. Member includes activate only with their containing branch. Different sources or explicit choices for the same name conflict; include order provides no overrides. Plugin versions remain best effort.",
     examples: ["loadouts install"],
     run: async args => { await install(requireProject(process.cwd())); return 0; },
   },

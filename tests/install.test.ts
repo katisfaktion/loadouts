@@ -13,6 +13,41 @@ function setup(skills = true) {
   const lock = () => JSON.parse(readFileSync(join(t.project, "loadouts.lock.json"), "utf8"));
   return {...t, opts, file, manifest, save, lock};
 }
+test.each([1, 2])("install preserves v%i hashes across a frozen restore", async version => {
+  const t = setup(), file = join(t.project, "skills-lock.json");
+  if (version === 1) writeFileSync(file, JSON.stringify({version, skills: {}}));
+  const opts = {...t.opts, env: {...t.opts.env, FAKE_SKILLS_LOCK_VERSION: String(version)}};
+  const first = await run(["install"], opts);
+  expect(first.code, first.stderr).toBe(0);
+  const before = readFileSync(file, "utf8");
+  expect(JSON.parse(before).version).toBe(version);
+  rmSync(join(t.project, ".agents/skills"), {recursive: true});
+  const restore = await run(["install"], opts);
+  expect(restore.code, restore.stderr).toBe(0);
+  expect(readFileSync(join(t.project, ".claude/skills/review/SKILL.md"), "utf8")).toBe("# review\n");
+  expect(readFileSync(file, "utf8")).toBe(before);
+});
+
+test("install leaves an unsupported future skills lock intact", async () => {
+  const t = setup(), file = join(t.project, "skills-lock.json"), before = JSON.stringify({version: 3, skills: {}});
+  writeFileSync(file, before);
+  const r = await run(["install"], t.opts);
+  expect(r.code).toBe(1);
+  expect(r.stderr).toContain("unsupported skills-lock.json version 3");
+  expect(readFileSync(file, "utf8")).toBe(before);
+  expect(existsSync(t.opts.env.FAKE_SKILLS_LOG)).toBe(false);
+});
+
+test("install refuses to mix v2 hashes into a v1 project when the installer is overridden", async () => {
+  const t = setup(), file = join(t.project, "skills-lock.json");
+  const before = JSON.stringify({version: 1, skills: {}});
+  writeFileSync(file, before);
+  const r = await run(["install"], t.opts);
+  expect(r.code).toBe(1);
+  expect(r.stderr).toContain("expected 1");
+  expect(readFileSync(file, "utf8")).toBe(before);
+  expect(existsSync(join(t.project, ".agents/skills/review"))).toBe(false);
+});
 test("install sets up a manifest-only project and a fresh clone without repeating successful installers", async () => {
   const t = setup(); expect((await run(["install"], t.opts)).code).toBe(0);
   expect(t.lock().version).toBe(1); expect(t.lock().installed["skill:codex:acme/tools@review"]).toEqual(["review"]);
