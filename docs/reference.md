@@ -232,7 +232,7 @@ Removing the selection removes its owned project configuration. The shared execu
 
 ## Agent-assisted exploration
 
-Ask your agent to propose a setup for the project. `loadouts explore` prints the bundled instructions for the agent to follow. It works before initialization. [Exploration skill](../skills/loadouts-explore/SKILL.md)
+Ask your agent to propose a setup for the project. `loadouts agents` lists the bundled workflows. `loadouts agents explore` prints the exploration guide as Markdown and works offline before initialization. The earlier `loadouts explore` spelling remains an alias. [Exploration skill](../skills/loadouts-explore/SKILL.md)
 
 1. Read the project's manifests and inspect existing project and user tools with `loadouts inspect --json`. Check which native plugins supply hooks as well as skills.
 2. Look in the configured catalog first. Read promising entries and their active includes. For unmet needs, run `npx skills find` for each relevant part of the stack and verify candidates against their upstream documentation.
@@ -279,7 +279,7 @@ The Git tag identifies the CLI release. The `schemas/v1/` directory identifies t
 
 ### Publish a verified loadout
 
-Use the same name as the upstream entry if you mean to change it. After trying the local setup on real work, ask the agent to diff the draft against its original commit and the catalog's current default branch. Preserve intervening upstream changes. Validate and install the reconciled draft and verify its behavior again.
+Run `loadouts agents publish` to read the bundled publishing guide offline. Use the same name as the upstream entry if you mean to change it. After trying the local setup on real work, ask the agent to diff the draft against its original commit and the catalog's current default branch. Preserve intervening upstream changes. Validate and install the reconciled draft and verify its behavior again.
 
 ```sh
 loadouts publish testing --catalog OWNER/REPO --summary 'Verified on a regression fix in the CLI project'

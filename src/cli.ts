@@ -20,11 +20,26 @@ import { ensureGitignore } from "./codex";
 import { publish } from "./publish";
 import { inspectProject, inspectionRoot } from "./inspect";
 import explorationSkill from "../skills/loadouts-explore/SKILL.md" with {type: "text"};
+import publicationSkill from "../skills/loadouts-publish/SKILL.md" with {type: "text"};
+
+const guideIndex = `# Agent workflow guides
+
+- \`loadouts agents explore\` — Inspect a project and propose reusable loadouts.
+- \`loadouts agents publish\` — Compare a verified local loadout with its catalog and prepare a pull request.`;
 
 export const COMMANDS: Record<string, { brief: string; hint?: string; summary: string; examples: string[]; run: (args: ParsedCommand) => Promise<number> }> = {
-  explore: {brief: "Explore the stack and propose reusable loadouts.",
+  agents: {brief: "Read bundled workflow guides.", hint: "[explore|publish]",
+    summary: "List the available guides or print one in Markdown. Works offline before project setup.",
+    examples: ["loadouts agents", "loadouts agents explore", "loadouts agents publish"],
+    run: async ({positionals: [topic]}) => {
+      const guides: Record<string, string> = {explore: explorationSkill, publish: publicationSkill};
+      console.log(topic ? guides[topic] : guideIndex);
+      return 0;
+    },
+  },
+  explore: {brief: "Alias for loadouts agents explore.",
     summary: "Print agent guidance to reuse suitable catalog entries, search remaining gaps with npx skills find, and create focused drafts. Default to direct manifest selections; use composition YAML for reusable bundles. Review included instructions and conventions for conflicts. Does not launch an agent or install anything.",
-    examples: ["loadouts explore"],
+    examples: ["loadouts agents explore", "loadouts explore"],
     run: async args => {
       console.log(explorationSkill); return 0;
     },

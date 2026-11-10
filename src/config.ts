@@ -22,12 +22,14 @@ export function readConfig(): UserConfig {
 export function setup(config: UserConfig): string[] {
   const changed: string[] = [];
   if (writeIfChanged(configFile(), `catalog = ${JSON.stringify(config.catalog)}\nharnesses = ${JSON.stringify(config.harnesses)}\n`)) changed.push(configFile());
-  const sentence = "Agent setups are managed by `loadouts`; see `loadouts help`.";
+  const hints = ["Agent setups are managed by `loadouts`; see `loadouts help`.", "Read bundled workflow guides with `loadouts agents`."];
   for (const h of config.harnesses) {
     const dir = join(home(), h === "codex" ? ".codex" : ".claude");
     const guide = join(dir, "LOADOUTS.md");
     const notes = existsSync(guide) ? readFileSync(guide, "utf8") : "";
-    if (!notes.includes(sentence) && writeIfChanged(guide, notes + (notes && !notes.endsWith("\n") ? "\n" : "") + sentence + "\n")) changed.push(guide);
+    const missing = hints.filter(line => !notes.includes(line));
+    const newline = notes.includes("\r\n") ? "\r\n" : "\n";
+    if (missing.length && writeIfChanged(guide, notes + (notes && !notes.endsWith("\n") ? newline : "") + missing.join(newline) + newline)) changed.push(guide);
     const reference = h === "codex" ? `@${guide}` : "@LOADOUTS.md";
     const file = join(dir, h === "codex" ? "AGENTS.md" : "CLAUDE.md");
     const text = existsSync(file) ? readFileSync(file, "utf8") : "";

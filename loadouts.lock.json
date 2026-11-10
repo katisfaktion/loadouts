@@ -9,6 +9,7 @@
     "codex"
   ],
   "includes": {
+    "agent-authoring": {},
     "bun-cli": {},
     "github-contributions": {},
     "sdlc": {}
@@ -18,6 +19,7 @@
     "codex-marketplace:superpowers-dev:obra/superpowers": [],
     "codex-plugin:ponytail@ponytail": [],
     "codex-plugin:superpowers@superpowers-dev": [],
+    "marketplace:claude-plugins-official:anthropics/claude-plugins-official": [],
     "marketplace:openai-codex:openai/codex-plugin-cc": [],
     "marketplace:ponytail:DietrichGebert/ponytail": [],
     "marketplace:superpowers-dev:obra/superpowers": [],
@@ -27,8 +29,11 @@
     "package-skill:codex:@optique/core#optique": [
       "optique"
     ],
+    "plugin:claude-md-management@claude-plugins-official": [],
     "plugin:codex@openai-codex": [],
+    "plugin:plugin-dev@claude-plugins-official": [],
     "plugin:ponytail@ponytail": [],
+    "plugin:skill-creator@claude-plugins-official": [],
     "plugin:superpowers@superpowers-dev": [],
     "skill:claude-code:cli/cli@gh": [
       "gh"
@@ -56,6 +61,7 @@
     ]
   },
   "loadouts": {
+    "agent-authoring": {},
     "bun-cli": {},
     "github-contributions": {},
     "sdlc": {
@@ -86,6 +92,14 @@
     }
   },
   "resolved": {
+    "agent-authoring": {
+      "catalog": {
+        "commit": "6254ac91e404636534bc245806f4c9c93419d96d",
+        "ref": "v0.1.0",
+        "repo": "katisfaktion/agent-loadouts"
+      },
+      "source": "github:katisfaktion/agent-loadouts/agent-authoring@v0.1.0"
+    },
     "bun-cli": {
       "source": "file:./.loadouts/catalog/bun-cli.yml"
     },
@@ -102,6 +116,9 @@
     }
   },
   "roots": {
+    "agent-authoring": {
+      "source": "github:katisfaktion/agent-loadouts/agent-authoring@v0.1.0"
+    },
     "bun-cli": {
       "source": "file:./.loadouts/catalog/bun-cli.yml"
     },

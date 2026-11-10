@@ -56,7 +56,7 @@ Loadouts is agent-first. Your agent can find the workflow through `loadouts help
 
 > I want to create an agent loadout for this project. Look for existing catalog entries first and propose anything we're missing.
 
-`loadouts explore` prints instructions for the agent. It inspects your stack and current setup, checks the catalog, and searches for skills to fill specific gaps. It can write and validate small, reusable drafts. You decide when to install a draft and try it on a real task.
+`loadouts agents` lists the guides bundled with the CLI. The agent reads `loadouts agents explore` to plan a setup and `loadouts agents publish` when you want to contribute it. During exploration, the agent inspects your stack and current setup, checks the catalog, and searches for skills to fill specific gaps. It can write and validate small, reusable drafts. You decide when to install a draft and try it on a real task.
 
 To try the same workflow yourself, run `loadouts create testing`. Keep the generated schema comment and put the following definition in `.loadouts/catalog/testing.yml`.
 
@@ -103,6 +103,6 @@ bun run build
 ./dist/loadouts help
 ```
 
-To use the repository's own agent setup, run `loadouts install` after `bun install`. It combines the shared SDLC workflow with the local [Bun and Optique](.loadouts/catalog/bun-cli.yml) and [GitHub contribution](.loadouts/catalog/github-contributions.yml) loadouts.
+To use the repository's own agent setup, run `loadouts install` after `bun install`. It combines the shared SDLC and agent-authoring loadouts with the local [Bun and Optique](.loadouts/catalog/bun-cli.yml) and [GitHub contribution](.loadouts/catalog/github-contributions.yml) loadouts.
 
 For user-visible changes, add a Changeset with `bunx changeset`. CI tests the PR. Merging the Changesets release PR publishes the native binaries and npm packages. [Release workflow and credentials](docs/reference.md#releasing-the-cli)

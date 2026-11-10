@@ -11,7 +11,7 @@ test("setup is idempotent and supplies catalog defaults", async () => {
   expect(readFileSync(join(t.home, ".claude/CLAUDE.md"), "utf8")).toBe("@LOADOUTS.md\n");
   expect(readFileSync(join(t.home, ".codex/AGENTS.md"), "utf8")).toBe(`@${join(t.home, ".codex/LOADOUTS.md")}\n`);
   for (const dir of [".claude", ".codex"]) {
-    expect(readFileSync(join(t.home, dir, "LOADOUTS.md"), "utf8")).toBe("Agent setups are managed by `loadouts`; see `loadouts help`.\n");
+    expect(readFileSync(join(t.home, dir, "LOADOUTS.md"), "utf8")).toBe("Agent setups are managed by `loadouts`; see `loadouts help`.\nRead bundled workflow guides with `loadouts agents`.\n");
   }
   expect((await run(["show", "base", "--json"], opts)).code).toBe(0);
 });
@@ -28,7 +28,7 @@ test("setup preserves existing instructions and loadout notes", async () => {
   for (const [dir, name] of [[".claude", "CLAUDE.md"], [".codex", "AGENTS.md"]]) {
     const reference = dir === ".claude" ? "@LOADOUTS.md" : `@${join(t.home, dir, "LOADOUTS.md")}`;
     expect(readFileSync(join(t.home, dir, name), "utf8")).toBe(`@RTK.md\n${sentence}\n\nKeep these instructions.\n${reference}\n`);
-    expect(readFileSync(join(t.home, dir, "LOADOUTS.md"), "utf8")).toBe(`Keep these loadout notes.\n${sentence}\n`);
+    expect(readFileSync(join(t.home, dir, "LOADOUTS.md"), "utf8")).toBe(`Keep these loadout notes.\n${sentence}\nRead bundled workflow guides with \`loadouts agents\`.\n`);
   }
   expect((await run(args, opts)).stdout).toContain("Nothing changed.");
 });
@@ -49,7 +49,7 @@ test("setup preserves existing references and CRLF line endings", async () => {
   await Bun.write(join(dir, "LOADOUTS.md"), `Custom notes.\r\n${sentence}\r\n`);
   expect((await run(["setup", "--catalog", "acme/repo", "--harness", "claude-code"], {cwd: t.project, env: t.env})).code).toBe(0);
   expect(readFileSync(join(dir, "CLAUDE.md"), "utf8")).toBe("@RTK.md\r\n@LOADOUTS.md\r\n");
-  expect(readFileSync(join(dir, "LOADOUTS.md"), "utf8")).toBe(`Custom notes.\r\n${sentence}\r\n`);
+  expect(readFileSync(join(dir, "LOADOUTS.md"), "utf8")).toBe(`Custom notes.\r\n${sentence}\r\nRead bundled workflow guides with \`loadouts agents\`.\r\n`);
 });
 test("init selects harnesses without overwriting an existing project", async () => {
   const t = tempEnv(), opts = { cwd: t.project, env: t.env };

@@ -4,6 +4,9 @@
     "codex"
   ],
   "loadouts": {
+    "agent-authoring": {
+      "source": "github:katisfaktion/agent-loadouts/agent-authoring@v0.1.0"
+    },
     "bun-cli": {
       "source": "file:./.loadouts/catalog/bun-cli.yml"
     },

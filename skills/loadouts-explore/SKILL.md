@@ -168,14 +168,4 @@ loadouts switch frontend/framework vue
 
 Replace the illustrative names and ref above with the approved, verified sources. Commit the manifest, both loadouts and skills locks, and `.loadouts/catalog/*.yml`. A same-name local draft never overrides a shared selection implicitly.
 
-## Compare and contribute after verification
-
-When the user separately asks to contribute a verified local loadout, the agent performs the comparison and prepares the PR. Use `loadouts help publish`. Read the recorded upstream base and compare the local YAML with both that base and the target catalog's current default branch in a temporary Git checkout. Use ordinary Git/file diffs; there is no `loadouts diff` command. Compare definitions semantically as well as textually so schema comments or formatting are not mistaken for capability changes. If the base is unknown, say so rather than claiming a three-way comparison.
-
-Explain local additions/removals and intervening upstream changes. Preserve upstream improvements: `publish` copies the entire local file onto the target's current default branch; it does not merge it with upstream or perform this comparison for you. Reconcile differences in the local draft with the user's approval, then validate, install and verify changed behavior before publishing. If there is no meaningful change, reuse upstream instead of opening a redundant PR. A renamed local draft proposes a differently named catalog file; it does not update the original entry.
-
-Publish local dependencies first. Check every include declaration in the YAML being published, including inactive branches, and every declaration in pinned definitions inspected for the active closure for portable GitHub sources: replace local file or machine-specific Git sources with available shared sources, then install and verify the composition before contributing it. Keep includes intact; do not inline dependencies or silently rewrite sources. Preview uses applied graph records and pinned descendant definitions in the existing local Git cache; it refuses missing cache objects without fetching or cloning and makes no GitHub calls.
-
-The preview and PR identify verified active choices: inactive targets were checked for source portability only. Do not fetch inactive targets during preview or claim they were installed or tested.
-
-For each independently useful loadout, run `loadouts publish <name> --catalog owner/repo --summary '<what was verified and why this change is reusable>'` to preview the contribution. The preview shows the proposed YAML and metadata, not an upstream diff. After explicit publication approval, run it with `--yes` to open the PR. Keep each PR focused on that loadout and report its URL. Do not merge, release, or switch the project's source automatically. The user can choose the published shared source later through `add`.
+When the user asks to contribute a verified loadout, read `loadouts agents publish` for the catalog comparison and PR workflow.

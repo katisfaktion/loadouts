@@ -8,7 +8,7 @@ test("root help gives agents a discovery path before changing project state", as
   const help = await run(["help"], options);
   expect(help.code).toBe(0);
   expect(help.stdout).toContain("For agents:");
-  for (const command of ["loadouts explore", "loadouts inspect --json", "loadouts help <command>"]) expect(help.stdout).toContain(command);
+  for (const command of ["loadouts agents", "loadouts inspect --json", "loadouts help <command>"]) expect(help.stdout).toContain(command);
   const inspect = await run(["inspect", "--json"], options);
   expect(inspect.code).toBe(0);
   expect(JSON.parse(inspect.stdout).initialized).toBe(false);
@@ -40,9 +40,35 @@ test("explore explains nested choices, conditional includes and selected-only ve
   for (const guidance of [
     "member `items`", "member `includes`", "languages/python/framework",
     "loadouts switch testing/languages/python/framework unittest",
-    "inactive targets were checked for source portability only",
+    "loadouts agents publish",
     "only the selected active closure", "parent removes explicit descendant requests",
   ]) expect(r.stdout).toContain(guidance);
+  expect(readdirSync(t.project)).toEqual([]);
+  expect(readdirSync(t.home)).toEqual([]);
+});
+
+test("agents lists offline guides and prints only the selected Markdown", async () => {
+  const t = tempEnv(), opts = {cwd: t.project, env: {...t.env, PATH: "", FORCE_COLOR: "1"}};
+  const index = await run(["agents"], opts);
+  expect(index.code).toBe(0);
+  for (const topic of ["explore", "publish"]) {
+    expect(index.stdout).toContain(`loadouts agents ${topic}`);
+    const guide = await run(["agents", topic], opts);
+    expect(guide.code).toBe(0);
+    expect(guide.stderr).toBe("");
+    expect(guide.stdout.trim()).toBe(readFileSync(join(repo, `skills/loadouts-${topic}/SKILL.md`), "utf8").trim());
+    if (topic === "publish") {
+      expect(guide.stdout).toContain("inactive targets were checked for source portability only");
+      expect(guide.stdout).toContain("loadouts publish");
+      expect(guide.stdout).toContain("explicit publication approval");
+    } else expect(guide.stdout).toBe((await run(["explore"], opts)).stdout);
+  }
+  for (const args of [["unknown"], ["publish", "--yes"], ["explore", "extra"]]) {
+    const error = await run(["agents", ...args], opts);
+    expect(error.code).toBe(2);
+    expect(error.stderr).toContain("loadouts help agents");
+    expect(error.stdout).toBe("");
+  }
   expect(readdirSync(t.project)).toEqual([]);
   expect(readdirSync(t.home)).toEqual([]);
 });
