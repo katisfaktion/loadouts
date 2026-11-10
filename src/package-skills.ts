@@ -5,7 +5,7 @@ import { CliError } from "./errors";
 import { paint, withProgress } from "./output";
 import { activeItems, artifactsFor, sourceFor, type Harness, type Loadout, type PackageSkills } from "./loadout";
 import type { Lock } from "./lock";
-import { checkSkillDirectories, identicalSkillDirectories, linkSkill, missingSkills, readSkillLock, skills, writeSkillLock, type SkillLock } from "./skills";
+import { checkSkillDirectories, fromGithubRepo, identicalSkillDirectories, linkSkill, missingSkills, readSkillLock, skills, writeSkillLock, type SkillLock } from "./skills";
 
 function installedPackage(project: string, name: string): {dir: string; version: string} | null {
   for (let dir = project; ; dir = dirname(dir)) {
@@ -88,7 +88,7 @@ export async function syncPackageSkills(project: string, lock: Lock, loaded: Rec
       const replacing = next ? retiring.filter(k => lock.installed[k]!.includes(name)) : [];
       const previousPkg = owners[0]?.split(":")[2]?.split("#")[0];
       const entry = native.skills[name], dest = join(project, ".agents/skills", name), existing = lstatSync(dest, {throwIfNoEntry: false});
-      const gitOwned = replacing.length > 0 && entry?.sourceType === "github" && replacing.every(k => k.split(":")[2]!.split("@")[0] === entry.source);
+      const gitOwned = replacing.length > 0 && replacing.every(k => fromGithubRepo(entry, k.split(":")[2]!.split("@")[0]!));
       if (Object.entries(lock.installed).some(([k, ns]) => k.startsWith("skill:") && !replacing.includes(k) && ns.includes(name)) || (entry && !gitOwned && (!owners.length || entry.sourceType !== "node_modules" || entry.source !== previousPkg)) || (existing && ((!owners.length && !gitOwned) || !existing.isDirectory())) || (next && previousPkg && next.pkg !== previousPkg)) throw conflict(name);
       const link = join(project, ".claude/skills", name), linked = lstatSync(link, {throwIfNoEntry: false});
       const claudeOwned = owners.some(k => k.startsWith("package-skill:claude-code:")) || (gitOwned && replacing.some(k => k.startsWith("skill:claude-code:")));

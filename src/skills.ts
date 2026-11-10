@@ -35,6 +35,8 @@ export async function addSkills(project: string, identifier: string, h: Harness,
 }
 
 export type SkillLock = {version: 1 | 2; skills: Record<string, {source: string; sourceType: string; computedHash: string; [key: string]: unknown}>};
+export const fromGithubRepo = (entry: SkillLock["skills"][string] | undefined, repo: string) =>
+  entry?.sourceType === "github" && entry.source.toLowerCase() === repo.toLowerCase();
 export const validName = (name: string) => /^[\w.-]+$/.test(name) && ![".", ".."].includes(name);
 const recovery = "restore skills-lock.json and verified skill folders from version control or backup; use loadouts update only to accept newer contents";
 export function checkSkillDirectories(project: string): void {
@@ -52,7 +54,13 @@ export function readSkillLock(project: string, expectedVersion?: SkillLock["vers
     if (typeof lock?.version !== "number") throw new Error();
     if (lock.version !== 1 && lock.version !== 2) throw new CliError(`unsupported skills-lock.json version ${lock.version}`, 1, "use a loadouts release that supports this lockfile");
     if (expectedVersion && lock.version !== expectedVersion) throw new CliError(`skills installer wrote lock version ${lock.version}, expected ${expectedVersion}`, 1, "unset LOADOUTS_SKILLS_CMD to use the compatible installer");
-    if (!lock.skills || typeof lock.skills !== "object" || Array.isArray(lock.skills) || Object.entries(lock.skills).some(([name, e]: [string, any]) => !validName(name) || !e || typeof e.source !== "string" || !e.source || typeof e.sourceType !== "string" || typeof e.computedHash !== "string" || !/^[a-f0-9]{64}$/.test(e.computedHash))) throw new Error();
+    if (!lock.skills || typeof lock.skills !== "object" || Array.isArray(lock.skills)) throw new Error();
+    for (const [name, entry] of Object.entries(lock.skills) as [string, SkillLock["skills"][string]][]) {
+      if (!validName(name) || !entry || typeof entry.source !== "string" || !entry.source || typeof entry.sourceType !== "string" || typeof entry.computedHash !== "string") throw new Error();
+      // skills 1.8 can leave the hash empty during migration. Fresh installer output must have a digest.
+      if (expectedVersion === undefined && lock.version === 2 && entry.computedHash === "") continue;
+      if (!/^[a-f0-9]{64}$/.test(entry.computedHash)) throw new Error();
+    }
     return {...lock, skills: Object.assign(Object.create(null), lock.skills)};
   } catch (e) {
     if (e instanceof CliError) throw e;
@@ -90,17 +98,20 @@ export function linkSkill(project: string, name: string, h: Harness): void {
 export async function installSkills(project: string, identifier: string, h: Harness, opts: {names?: string[]; pending?: boolean; update?: boolean}): Promise<string[]> {
   checkSkillDirectories(project);
   const [repo, selected] = identifier.split("@"), lock = readSkillLock(project);
-  const names = opts.names?.length ? opts.names : Object.entries(lock.skills).filter(([name, entry]) => entry.source === repo && (!selected || name === selected)).map(([name]) => name);
+  const names = opts.names?.length ? opts.names : Object.entries(lock.skills).filter(([name, entry]) => fromGithubRepo(entry, repo!) && (!selected || name === selected)).map(([name]) => name);
   if (names.some(n => !validName(n))) throw new CliError("invalid installed skill name", 1, "restore loadouts.lock.json from version control");
   const checkSource = (name: string) => {
     const entry = lock.skills[name];
-    if (entry && (entry.source !== repo || entry.sourceType !== "github")) throw new CliError(`skill ${name} is already locked to another source`, 1, "use distinct skill names or remove the conflicting selection first");
+    if (entry && !fromGithubRepo(entry, repo!)) throw new CliError(`skill ${name} is already locked to another source`, 1, "use distinct skill names or remove the conflicting selection first");
   };
   for (const name of [...names, ...(selected ? [selected] : [])]) checkSource(name);
   const restore = names.length > 0 && !opts.update && !opts.pending;
   const missing = names.filter(name => missingSkills(project, [name], "codex"));
   if (restore && !missing.length) { for (const name of names) linkSkill(project, name, h); return names; }
   if (restore && missing.some(name => !Object.hasOwn(lock.skills, name))) throw new CliError(`skills-lock.json has no entry for missing skills from ${identifier}`, 1, recovery);
+  if (restore) for (const name of missing) {
+    if (!lock.skills[name]!.computedHash) throw new CliError(`skills-lock.json has no verified hash for ${name}`, 1, recovery);
+  }
   const stage = mkdtempSync(join(tmpdir(), "loadouts-skills-")), installed: string[] = [];
   let discoveryPending = !restore;
   try {
@@ -116,7 +127,7 @@ export async function installSkills(project: string, identifier: string, h: Harn
       next = readSkillLock(stage, lock.version);
       for (const name of fetched) {
         checkSource(name);
-        if (!next.skills[name] || next.skills[name].source !== repo || missingSkills(stage, [name], "codex")) throw new CliError(`installer did not record skill ${name} in skills-lock.json`, 1, recovery);
+        if (!fromGithubRepo(next.skills[name], repo!) || missingSkills(stage, [name], "codex")) throw new CliError(`installer did not record skill ${name} in skills-lock.json`, 1, recovery);
         if (!opts.update && lock.skills[name] && lock.skills[name].computedHash !== next.skills[name].computedHash) throw new CliError(`frozen skill hash changed for ${name}`, 1, recovery);
       }
     }

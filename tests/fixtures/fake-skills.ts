@@ -24,7 +24,7 @@ if (command === "find") {
     if (!failed) {
       const dir = join(store, name); mkdirSync(dir, {recursive: true});
       writeFileSync(join(dir, "SKILL.md"), content(name)); writeFileSync(join(dir, ".source"), repo);
-      lock.skills[name] = {source: repo, sourceType: "github", skillPath: `skills/${name}/SKILL.md`, computedHash: hash(name)};
+      lock.skills[name] = {source: version === 2 ? repo.toLowerCase() : repo, sourceType: "github", skillPath: `skills/${name}/SKILL.md`, computedHash: hash(name)};
       const agentsFile = join(dir, ".agents"), agents: string[] = existsSync(agentsFile) ? JSON.parse(readFileSync(agentsFile, "utf8")) : [];
       writeFileSync(agentsFile, JSON.stringify([...new Set([...agents, agent])]));
       if (agent === "claude-code") {

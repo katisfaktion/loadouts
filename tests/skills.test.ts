@@ -1,8 +1,18 @@
 import { test, expect } from "bun:test";
 import { cpSync, lstatSync, readFileSync, existsSync, mkdirSync, rmSync, writeFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
-import { addSkills, installSkills, removeSkills, listSkills } from "../src/skills";
+import { addSkills, installSkills, removeSkills, listSkills, readSkillLock } from "../src/skills";
 import { repo, tempEnv, withEnv } from "./helpers";
+
+test("only existing v2 skill locks may have an explicitly empty digest", () => {
+  const t = tempEnv(), file = join(t.project, "skills-lock.json");
+  for (const version of [1, 2] as const) for (const computedHash of [undefined, null, "bad", ""]) {
+    writeFileSync(file, JSON.stringify({version, skills: {review: {sourceType: "github", source: "acme/tools", computedHash}}}));
+    expect(() => readSkillLock(t.project, version)).toThrow("invalid skills-lock.json");
+    if (version === 2 && computedHash === "") expect(readSkillLock(t.project).skills.review.computedHash).toBe("");
+    else expect(() => readSkillLock(t.project)).toThrow("invalid skills-lock.json");
+  }
+});
 
 test.each([1, 2])("the default installer requests the exact package compatible with lock v%i", async version => {
   const t = tempEnv(), bin = join(t.home, "bin");

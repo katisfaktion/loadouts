@@ -28,6 +28,49 @@ test.each([1, 2])("install preserves v%i hashes across a frozen restore", async 
   expect(readFileSync(file, "utf8")).toBe(before);
 });
 
+test("install, frozen restore and update recognize a canonical GitHub repository name", async () => {
+  const t = setup(), file = join(t.project, "skills-lock.json");
+  writeFileSync(t.file, "name: work\nitems: {tools: {skills: [AcMe/TOOLS@Review]}}\n");
+  const first = await run(["install"], t.opts);
+  expect(first.code, first.stderr).toBe(0);
+  expect(JSON.parse(readFileSync(file, "utf8")).skills.Review.source).toBe("acme/tools");
+  rmSync(join(t.project, ".agents/skills"), {recursive: true});
+  rmSync(join(t.project, "loadouts.lock.json"));
+  writeFileSync(t.opts.env.FAKE_SKILLS_LOG, "");
+  const restore = await run(["install"], t.opts);
+  expect(restore.code, restore.stderr).toBe(0);
+  expect(readFileSync(t.opts.env.FAKE_SKILLS_LOG, "utf8").trim()).toBe('["experimental_install","--frozen-lockfile"]');
+  expect((await run(["update"], t.opts)).code).toBe(0);
+  expect(readFileSync(join(t.project, ".claude/skills/Review/SKILL.md"), "utf8")).toBe("# Review\n");
+});
+
+test("a migrated v2 empty hash blocks only the affected frozen restore and update repairs it", async () => {
+  const t = setup(), file = join(t.project, "skills-lock.json");
+  const unknown = {source: "acme/tools", sourceType: "github", computedHash: ""};
+  writeFileSync(file, JSON.stringify({version: 2, skills: {unrelated: unknown}}));
+  const first = await run(["install"], t.opts);
+  expect(first.code, first.stderr).toBe(0);
+  const lock = JSON.parse(readFileSync(file, "utf8"));
+  lock.skills.review.computedHash = "";
+  const before = JSON.stringify(lock);
+  writeFileSync(file, before);
+  rmSync(join(t.project, ".agents/skills"), {recursive: true});
+  writeFileSync(t.opts.env.FAKE_SKILLS_LOG, "");
+  const frozen = await run(["install"], t.opts);
+  expect(frozen.code).toBe(1);
+  expect(frozen.stderr).toContain("no verified hash for review");
+  expect(frozen.stderr).toContain("loadouts update");
+  expect(readFileSync(t.opts.env.FAKE_SKILLS_LOG, "utf8")).toBe("");
+  expect(readFileSync(file, "utf8")).toBe(before);
+  const update = await run(["update"], t.opts);
+  expect(update.code, update.stderr).toBe(0);
+  const repaired = JSON.parse(readFileSync(file, "utf8"));
+  expect(repaired.skills.review.computedHash).toMatch(/^[0-9a-f]{64}$/);
+  expect(repaired.skills.unrelated).toEqual(unknown);
+  rmSync(join(t.project, ".agents/skills"), {recursive: true});
+  expect((await run(["install"], t.opts)).code).toBe(0);
+});
+
 test("install leaves an unsupported future skills lock intact", async () => {
   const t = setup(), file = join(t.project, "skills-lock.json"), before = JSON.stringify({version: 3, skills: {}});
   writeFileSync(file, before);

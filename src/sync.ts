@@ -56,7 +56,7 @@ export function desired(lock: Lock, loadouts: Record<string, Loadout>): Map<stri
       // Skill folders are shared across harnesses; only explicit names are knowable before discovery.
       for (const identifier of source.skills ?? []) {
         const [repo, skill] = identifier.split("@");
-        if (skill) claim(`skill:${skill}`, a.id, `github:${repo}`);
+        if (skill) claim(`skill:${skill}`, a.id, `github:${repo!.toLowerCase()}`);
       }
       for (const selector of source.packageSkills?.include ?? []) {
         const [pkg, skill] = selector.split("#");
