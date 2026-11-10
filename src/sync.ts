@@ -200,7 +200,7 @@ export async function sync(project: string, lock: Lock, opts?: {check?: boolean;
       if (applyClaude(project, new Map([[key, mcp]]), [])) files.push(key.startsWith("mcp:") ? ".mcp.json" : ".claude/settings.json");
       lock.installed[key] = [];
     }
-    if (lock.harnesses.includes("codex") && ensureGitignore(project)) files.push(".gitignore");
+    if (ensureGitignore(project)) files.push(".gitignore");
     for (const key of want.keys()) if (key.startsWith("mcp:codex:")) lock.installed[key] = [];
     const repairInstallers = missingInstallerArtifacts(project, lock).length > 0;
     await withProgress("Applying project integrations", applyInstallers());

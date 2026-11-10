@@ -166,7 +166,7 @@ loadouts switch frontend/framework vue
 
 `add --with` also accepts nested group paths; supply parent and descendant selections together when needed. Switching or disabling a parent removes explicit descendant requests under deselected members from that same direct manifest entry and reports them; re-enabling uses defaults. Other roots and include requests remain unchanged and may conflict. Manually edited stale inactive requests remain errors. Branch changes release only unreachable managed artifacts, retaining shared artifacts still required by active members or other roots. Installs write lock format 1 with active choices and edges. Development lock formats are not supported.
 
-Replace the illustrative names and ref above with the approved, verified sources. Commit the manifest, both loadouts and skills locks, and `.loadouts/catalog/*.yml`; keep `.loadouts/codex-home/` ignored. A same-name local draft never overrides a shared selection implicitly.
+Replace the illustrative names and ref above with the approved, verified sources. Commit the manifest, both loadouts and skills locks, and `.loadouts/catalog/*.yml`. A same-name local draft never overrides a shared selection implicitly.
 
 ## Compare and contribute after verification
 

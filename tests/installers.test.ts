@@ -143,40 +143,8 @@ test("shared selections and harness removal retain the integration until the las
   expect(existsSync(join(t.project, ".codex/agents/codebase-memory.toml"))).toBe(false);
 });
 
-function legacy(t: ReturnType<typeof fixture>) {
-  const file = join(t.project, ".loadouts/installers/codebase-memory.json"), state = json(file);
-  const archived: Record<string, string> = {};
-  for (const table of ["files", "hooks"]) for (const path of Object.keys(state[table])) {
-    const old = path.startsWith(".codex/") ? path.replace(".codex/", ".loadouts/codex-home/") : path.startsWith(".agents/") ? path.replace(".agents/", ".loadouts/codex-home/") : path.endsWith("codebase-memory.md") && path.startsWith(".loadouts/installers/") ? ".loadouts/codex-home/AGENTS.md" : path;
-    if (old === path) continue;
-    mkdirSync(join(t.project, old, ".."), {recursive: true});
-    renameSync(join(t.project, path), join(t.project, old));
-    state[table][old] = state[table][path]; delete state[table][path];
-    archived[old] = readFileSync(join(t.project, old), "utf8");
-  }
-  writeFileSync(file, JSON.stringify(state));
-  writeFileSync(join(t.project, ".loadouts/codex-home/sessions.jsonl"), "history");
-  archived[".loadouts/codex-home/sessions.jsonl"] = "history";
-  return {file, state, archived};
-}
-
-test("migrates legacy receipts without deleting history or indexing again, including removal", async () => {
-  const t = fixture(); expect((await t.run(["install"])).code).toBe(0);
-  const {file, archived} = legacy(t);
-  expect((await t.run(["status", "--json"])).stdout).toContain('"needsInstall": true');
-  expect((await t.run(["install"])).code).toBe(0);
-  expect(json(file).indexedRoot).toBe(t.project);
-  expect(Object.keys(json(file).files).some(p => p.startsWith(".loadouts/codex-home/"))).toBe(false);
-  expect(existsSync(join(t.project, ".codex/hooks.json"))).toBe(true);
-  expect(calls(t.log).filter(c => c.args[0] === "cli")).toHaveLength(1);
-  expect((await t.run(["remove", "memory"])).code).toBe(0);
-  for (const [path, text] of Object.entries(archived)) expect(readFileSync(join(t.project, path), "utf8")).toBe(text);
-  expect(readFileSync(join(t.project, "AGENTS.md"), "utf8")).not.toContain("Use codebase-memory before structural searches.");
-});
-
 test.each([".codex/agents/codebase-memory.toml", ".agents/skills/codebase-memory/SKILL.md", ".codex/hooks.json"])("native conflict at %s blocks all config mutation", async path => {
   const t = fixture(); expect((await t.run(["install"])).code).toBe(0);
-  legacy(t);
   const config = join(t.project, ".codex/config.toml"), before = readFileSync(config, "utf8"), lock = readFileSync(join(t.project, "loadouts.lock.json"), "utf8");
   mkdirSync(join(t.project, path, ".."), {recursive: true});
   const text = path.endsWith("json") ? JSON.stringify({hooks: {SessionStart: [{hooks: [{type: "command", command: "codebase-memory-mcp personal"}]}]}}) : "personal";
@@ -194,26 +162,14 @@ test("adopts matching committed native assets without a local receipt", async ()
   expect(json(join(t.project, ".codex/hooks.json")).hooks.SessionStart).toHaveLength(1);
 });
 
-test.each(["missing", "edited"])("handles %s archived assets safely", async kind => {
+test("rejects installer receipts claiming a profile outside the native project layout", async () => {
   const t = fixture(); expect((await t.run(["install"])).code).toBe(0);
-  legacy(t);
-  const path = join(t.project, ".loadouts/codex-home/agents/codebase-memory.toml");
-  if (kind === "missing") unlinkSync(path); else writeFileSync(path, "personal");
-  expect((await t.run(["install"])).code).toBe(kind === "missing" ? 0 : 1);
-  if (kind === "edited") expect(readFileSync(path, "utf8")).toBe("personal");
-});
-
-test.each(["retry", "cancel"])("%s an interrupted migration preserves archived state", async action => {
-  const t = fixture(); expect((await t.run(["install"])).code).toBe(0);
-  const native = json(join(t.project, ".loadouts/installers/codebase-memory.json"));
-  const profile = ".codex/agents/codebase-memory.toml", text = readFileSync(join(t.project, profile), "utf8");
-  const {file, state, archived} = legacy(t);
-  writeFileSync(join(t.project, profile), text);
-  writeFileSync(file, JSON.stringify({...native, pending: true, previousFiles: state.files, previousHooks: state.hooks, files: {...state.files, ...native.files}}));
-  expect((await t.run(action === "retry" ? ["install"] : ["remove", "memory"])).code).toBe(0);
-  expect(existsSync(join(t.project, profile))).toBe(action === "retry");
-  for (const [path, content] of Object.entries(archived)) expect(readFileSync(join(t.project, path), "utf8")).toBe(content);
-  expect(calls(t.log).filter(c => c.args[0] === "cli")).toHaveLength(1);
+  const file = join(t.project, ".loadouts/installers/codebase-memory.json"), state = json(file);
+  state.files[".loadouts/codex-home/agents/codebase-memory.toml"] = state.files[".codex/agents/codebase-memory.toml"];
+  writeFileSync(file, JSON.stringify(state));
+  const result = await t.run(["install"]);
+  expect(result.code).toBe(1);
+  expect(result.stderr).toContain("invalid installer receipt");
 });
 
 test("rejects a native skill symlink before writing configuration and preserves root instructions", async () => {

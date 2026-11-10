@@ -55,7 +55,7 @@ test("install sets up a manifest-only project and a fresh clone without repeatin
   const before = readFileSync(t.opts.env.FAKE_SKILLS_LOG, "utf8"), mtime = statSync(join(t.project, "loadouts.lock.json")).mtimeMs;
   expect((await run(["install"], t.opts)).stdout.trim()).toBe("Nothing changed.");
   expect(readFileSync(t.opts.env.FAKE_SKILLS_LOG, "utf8")).toBe(before); expect(statSync(join(t.project, "loadouts.lock.json")).mtimeMs).toBe(mtime);
-  git(t.project, "init", "-b", "main"); git(t.project, "add", "loadouts.json", "loadouts.lock.json", "skills-lock.json", ".loadouts/catalog", ".gitignore"); git(t.project, "commit", "-m", "Selected setup");
+  git(t.project, "init", "-b", "main"); git(t.project, "add", "loadouts.json", "loadouts.lock.json", "skills-lock.json", ".loadouts/catalog"); git(t.project, "commit", "-m", "Selected setup");
   const other = tempEnv(); git(t.project, "clone", "--local", t.project, other.project);
   const calls = join(other.home, "calls.jsonl");
   const r = await run(["install"], {cwd: other.project, env: {...other.env, FAKE_SKILLS_LOG: calls}}); expect(r.code, r.stderr).toBe(0);

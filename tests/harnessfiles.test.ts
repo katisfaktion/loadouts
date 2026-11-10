@@ -38,7 +38,7 @@ test("Codex project config has valid TOML without authentication links or trust 
     expect(existsSync(join(t.project, ".codex/auth.json"))).toBe(false);
     expect(existsSync(join(t.project, ".loadouts/codex-home"))).toBe(false);
     expect(writeCodexHome(t.project, {shadcn: {command: "npx", args: ["{project}"], env: {"KEY.WITH.DOTS": "value"}}})).toBe(false);
-    expect(ensureGitignore(t.project)).toBe(true); expect(ensureGitignore(t.project)).toBe(false);
+    expect(ensureGitignore(t.project)).toBe(false); expect(existsSync(join(t.project, ".gitignore"))).toBe(false);
   });
 });
 test("invalid user settings are never overwritten", () => {

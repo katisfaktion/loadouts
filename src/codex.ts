@@ -20,10 +20,11 @@ export function expandProject(s: McpServer, project: string): McpServer {
   return expanded;
 }
 export function ensureGitignore(project: string): boolean {
-  const file = join(project, ".gitignore"), text = existsSync(file) ? readFileSync(file, "utf8") : "";
-  let updated = text.replace(/^\/?\.loadouts\/(?=\r?$)/gm, ".loadouts/codex-home/");
-  if (!updated.split(/\r?\n/).some(line => line === ".loadouts/codex-home/" || line === "/.loadouts/codex-home/")) updated += (updated && !updated.endsWith("\n") ? "\n" : "") + ".loadouts/codex-home/\n";
-  return writeIfChanged(file, updated);
+  const file = join(project, ".gitignore");
+  if (!lstatSync(file, {throwIfNoEntry: false})?.isFile()) return false;
+  const text = readFileSync(file, "utf8");
+  const updated = text.replace(/^\/?\.loadouts\/(?:codex-home\/)?(?:\r?\n|$)/gm, "");
+  return updated !== text && writeIfChanged(file, updated);
 }
 export function stringifyCodexValue(v: any): string {
   return Array.isArray(v) ? `[${v.map(stringifyCodexValue).join(", ")}]` : v !== null && typeof v === "object" ? `{ ${Object.entries(v).map(([k, value]) => `${JSON.stringify(k)} = ${stringifyCodexValue(value)}`).join(", ")} }` : JSON.stringify(v);
