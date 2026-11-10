@@ -1,0 +1,12 @@
+["plugins"]
+["plugins"."superpowers@superpowers-dev"]
+"enabled" = true
+["plugins"."ponytail@ponytail"]
+"enabled" = true
+["marketplaces"]
+["marketplaces"."superpowers-dev"]
+"source_type" = "git"
+"source" = "https://github.com/obra/superpowers.git"
+["marketplaces"."ponytail"]
+"source_type" = "git"
+"source" = "https://github.com/DietrichGebert/ponytail.git"

@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/katisfaktion/loadouts/v0.1.0/schemas/v1/loadout.schema.json
+name: github-contributions
+items:
+  github:
+    skills: [cli/cli@gh]
+    conventions: |
+      Before drafting or submitting a GitHub issue, read the matching form in .github/ISSUE_TEMPLATE/ and address its required fields. For PRs, read .github/PULL_REQUEST_TEMPLATE.md and keep its headings. Follow the template even when supplying a body directly to gh or an API. A request for a draft ends with a title and body.
+  writing:
+    skills: [cursor/plugins@unslop]
+    conventions: Edit the prose without changing template headings, quoted errors, commands, or reported test results.
+  commits:
+    skills: [github/awesome-copilot@git-commit]
+    conventions: |
+      Give each commit one purpose and a Conventional Commits subject. Before submitting a PR, review the commits against its target branch. Fold fixups and work-in-progress commits into the changes they complete, split unrelated changes, and order the series so a reviewer can follow it. Verify the final diff and rerun the project checks after rewriting. Get approval before rewriting published history.
+routing:
+  - when: Drafting or revising a GitHub issue or pull request
+    use: [github, writing]
+  - when: Writing or editing contribution docs, Changesets, commit messages or review comments
+    use: [writing]
+  - when: Creating or splitting commits for a contribution
+    use: [commits, writing]

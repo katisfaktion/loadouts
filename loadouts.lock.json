@@ -1,0 +1,116 @@
+{
+  "catalog": {
+    "commit": "6254ac91e404636534bc245806f4c9c93419d96d",
+    "ref": "v0.1.0",
+    "repo": "katisfaktion/agent-loadouts"
+  },
+  "harnesses": [
+    "claude-code",
+    "codex"
+  ],
+  "includes": {
+    "bun-cli": {},
+    "github-contributions": {},
+    "sdlc": {}
+  },
+  "installed": {
+    "codex-marketplace:ponytail:DietrichGebert/ponytail": [],
+    "codex-marketplace:superpowers-dev:obra/superpowers": [],
+    "codex-plugin:ponytail@ponytail": [],
+    "codex-plugin:superpowers@superpowers-dev": [],
+    "marketplace:openai-codex:openai/codex-plugin-cc": [],
+    "marketplace:ponytail:DietrichGebert/ponytail": [],
+    "marketplace:superpowers-dev:obra/superpowers": [],
+    "package-skill:claude-code:@optique/core#optique": [
+      "optique"
+    ],
+    "package-skill:codex:@optique/core#optique": [
+      "optique"
+    ],
+    "plugin:codex@openai-codex": [],
+    "plugin:ponytail@ponytail": [],
+    "plugin:superpowers@superpowers-dev": [],
+    "skill:claude-code:cli/cli@gh": [
+      "gh"
+    ],
+    "skill:claude-code:cursor/plugins@unslop": [
+      "unslop"
+    ],
+    "skill:claude-code:github/awesome-copilot@git-commit": [
+      "git-commit"
+    ],
+    "skill:claude-code:laurigates/claude-plugins@bun-development": [
+      "bun-development"
+    ],
+    "skill:codex:cli/cli@gh": [
+      "gh"
+    ],
+    "skill:codex:cursor/plugins@unslop": [
+      "unslop"
+    ],
+    "skill:codex:github/awesome-copilot@git-commit": [
+      "git-commit"
+    ],
+    "skill:codex:laurigates/claude-plugins@bun-development": [
+      "bun-development"
+    ]
+  },
+  "loadouts": {
+    "bun-cli": {},
+    "github-contributions": {},
+    "sdlc": {
+      "methodology": [
+        "superpowers"
+      ],
+      "review": [
+        "second-opinion"
+      ],
+      "style": [
+        "ponytail"
+      ]
+    }
+  },
+  "local": {
+    "bun-cli": "# yaml-language-server: $schema=https://raw.githubusercontent.com/katisfaktion/loadouts/v0.1.0/schemas/v1/loadout.schema.json\nname: bun-cli\nitems:\n  verification:\n    conventions: |\n      Run bun test before committing. For CLI integration tests, use a temporary HOME, a fixture catalog and fake installers; keep network calls and the developer's agent setup out of the test.\n  interface:\n    packageSkills:\n      include: [\"@optique/core#optique\"]\n    conventions: |\n      When changing a CLI command, keep its help, exit codes and machine-readable output consistent. Add a Changeset for user-visible behavior changes.\n  tooling:\n    skills: [laurigates/claude-plugins@bun-development]\nrouting:\n  - when: Selecting bun test flags or building and cross-compiling the standalone CLI\n    use: [tooling]\n  - when: Adding or changing CLI commands, options or argument parsing with Optique\n    use: [interface]\n",
+    "github-contributions": "# yaml-language-server: $schema=https://raw.githubusercontent.com/katisfaktion/loadouts/v0.1.0/schemas/v1/loadout.schema.json\nname: github-contributions\nitems:\n  github:\n    skills: [cli/cli@gh]\n    conventions: |\n      Before drafting or submitting a GitHub issue, read the matching form in .github/ISSUE_TEMPLATE/ and address its required fields. For PRs, read .github/PULL_REQUEST_TEMPLATE.md and keep its headings. Follow the template even when supplying a body directly to gh or an API. A request for a draft ends with a title and body.\n  writing:\n    skills: [cursor/plugins@unslop]\n    conventions: Edit the prose without changing template headings, quoted errors, commands, or reported test results.\n  commits:\n    skills: [github/awesome-copilot@git-commit]\n    conventions: |\n      Give each commit one purpose and a Conventional Commits subject. Before submitting a PR, review the commits against its target branch. Fold fixups and work-in-progress commits into the changes they complete, split unrelated changes, and order the series so a reviewer can follow it. Verify the final diff and rerun the project checks after rewriting. Get approval before rewriting published history.\nrouting:\n  - when: Drafting or revising a GitHub issue or pull request\n    use: [github, writing]\n  - when: Writing or editing contribution docs, Changesets, commit messages or review comments\n    use: [writing]\n  - when: Creating or splitting commits for a contribution\n    use: [commits, writing]\n"
+  },
+  "packageSkills": {
+    "@optique/core": {
+      "requiredBy": [
+        "bun-cli/interface"
+      ],
+      "skills": [
+        "optique"
+      ],
+      "version": "1.3.6"
+    }
+  },
+  "resolved": {
+    "bun-cli": {
+      "source": "file:./.loadouts/catalog/bun-cli.yml"
+    },
+    "github-contributions": {
+      "source": "file:./.loadouts/catalog/github-contributions.yml"
+    },
+    "sdlc": {
+      "catalog": {
+        "commit": "6254ac91e404636534bc245806f4c9c93419d96d",
+        "ref": "v0.1.0",
+        "repo": "katisfaktion/agent-loadouts"
+      },
+      "source": "github:katisfaktion/agent-loadouts/sdlc@v0.1.0"
+    }
+  },
+  "roots": {
+    "bun-cli": {
+      "source": "file:./.loadouts/catalog/bun-cli.yml"
+    },
+    "github-contributions": {
+      "source": "file:./.loadouts/catalog/github-contributions.yml"
+    },
+    "sdlc": {
+      "source": "github:katisfaktion/agent-loadouts/sdlc@v0.1.0"
+    }
+  },
+  "version": 1
+}

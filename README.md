@@ -219,6 +219,15 @@ bun run build
 
 The binary is written to `dist/loadouts`; put it on your `PATH` to use it elsewhere. Tests use temporary homes and fixtures without calling external services or real skill installers. CI runs tests on pull requests.
 
+To use this repository's agent setup, run these commands after `bun install`.
+
+```sh
+loadouts install
+loadouts doctor
+```
+
+Claude Code and Codex share the `sdlc` workflow, [Bun and Optique skills](.loadouts/catalog/bun-cli.yml), and [contribution guidance](.loadouts/catalog/github-contributions.yml) for issue and PR templates, writing, and semantic commits.
+
 For a versioned change, add a descriptive Changeset with `bunx changeset`. Changesets opens a release PR; after a maintainer merges it, CI builds native binaries, publishes npm packages, and creates the GitHub release and tag. The private development package stays named `loadouts`; `scripts/package-npm.ts` produces the public `@katisfaktion/loadouts` package and five platform packages under `dist/npm/`, all at the Changesets version. The public package contains a Node launcher with exact optional dependencies on those binaries, without the development dependencies or Bun source files.
 
 Repository maintainers must configure `RELEASE_TOKEN` with contents and pull-request write access so automated release PRs trigger CI. Release automation does not merge PRs.

@@ -1,0 +1,17 @@
+{
+  "harnesses": [
+    "claude-code",
+    "codex"
+  ],
+  "loadouts": {
+    "bun-cli": {
+      "source": "file:./.loadouts/catalog/bun-cli.yml"
+    },
+    "github-contributions": {
+      "source": "file:./.loadouts/catalog/github-contributions.yml"
+    },
+    "sdlc": {
+      "source": "github:katisfaktion/agent-loadouts/sdlc@v0.1.0"
+    }
+  }
+}

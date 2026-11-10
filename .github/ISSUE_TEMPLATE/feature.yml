@@ -1,0 +1,18 @@
+name: Feature request
+description: Suggest a change to how loadouts are authored, installed or shared.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: Describe the workflow and where it falls short today.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: What would success look like?
+      description: A sample command, loadout snippet or concrete before-and-after example is welcome.
+    validations:
+      required: true
