@@ -1,4 +1,4 @@
-import { paint } from "./output";
+import { paint, withProgress } from "./output";
 import {existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, lstatSync, cpSync, renameSync, rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {dirname, join, resolve} from "node:path";
@@ -56,7 +56,8 @@ export async function syncCodexPlugins(project: string, lock: Lock, keys: string
   const overrides = Object.entries(selected).flatMap(([key, value]) => ["-c", `${key}=${stringifyCodexValue(value)}`]);
   const command = async (args: string[], stage?: string): Promise<any> => {
     const child = Bun.spawn(["codex", ...(!stage ? overrides : []), "plugin", ...args, "--json"], {cwd: stage ?? project, env: {...process.env, CODEX_HOME: stage ?? root}, stdout: "pipe", stderr: "pipe"});
-    const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
+    const [code, stdout, stderr] = await withProgress(`Running codex plugin ${args.join(" ")}`,
+      Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]));
     if (code) failure(`Codex plugin command failed: ${stderr.trim() || stdout.trim() || "no output"}`);
     let result: any;
     try { result = JSON.parse(stdout); } catch { failure("Codex returned invalid plugin JSON"); }

@@ -1,11 +1,46 @@
 import { expect, test } from "bun:test";
 import { paint } from "../src/output";
-import { run, tempEnv, withEnv, fixtureCatalog } from "./helpers";
-import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { repo, run, tempEnv, withEnv, fixtureCatalog } from "./helpers";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const plainEnv = {NO_COLOR: "", NODE_DISABLE_COLORS: "", FORCE_COLOR: ""};
 const ansi = /\x1b\[[0-9;]*m/g;
+
+test("a slow install identifies the pending skill in the terminal before it finishes", async () => {
+  const t = tempEnv(), dir = join(t.project, ".loadouts/catalog");
+  mkdirSync(dir, {recursive: true});
+  writeFileSync(join(dir, "work.yml"), "name: work\nitems: {review: {skills: [acme/tools@review]}}\n");
+  writeFileSync(join(t.project, "loadouts.json"), JSON.stringify({harnesses: ["codex"], loadouts: {work: {source: "file:./.loadouts/catalog/work.yml"}}}));
+  const ready = join(t.home, "progress-seen"), slow = join(t.home, "slow.ts");
+  writeFileSync(slow, `const deadline = Date.now() + 3000;
+while (!await Bun.file(${JSON.stringify(ready)}).exists()) {
+  if (Date.now() > deadline) throw new Error("No progress appeared while waiting");
+  await Bun.sleep(25);
+}
+await import(${JSON.stringify(join(repo, "tests/fixtures/fake-skills.ts"))});`);
+  let output = "";
+  const child = Bun.spawn([process.execPath, join(repo, "src/cli.ts"), "install"], {
+    cwd: t.project, env: {...process.env, ...t.env, NO_COLOR: "1", LOADOUTS_SKILLS_CMD: `bun ${slow}`},
+    terminal: {cols: 100, rows: 20, data(_, chunk) {
+      output += new TextDecoder().decode(chunk);
+      if (/\d+s.*acme\/tools@review.*codex/i.test(output) && !existsSync(ready)) writeFileSync(ready, "");
+    }},
+  });
+  const timeout = setTimeout(() => child.kill(), 3500);
+  try {
+    expect(await child.exited, output).toBe(0);
+    expect(output).toContain("1 added, 0 removed");
+  } finally { clearTimeout(timeout); child.terminal!.close(); writeFileSync(ready, ""); }
+
+  const piped = await run(["install"], {cwd: t.project, env: t.env});
+  expect(piped).toEqual({code: 0, stdout: "Nothing changed.\n", stderr: ""});
+  writeFileSync(slow, 'await Bun.sleep(1200); console.error("fixture installer failed"); process.exit(1);');
+  const failed = await run(["update"], {cwd: t.project, env: {...t.env, LOADOUTS_SKILLS_CMD: `bun ${slow}`}});
+  expect(failed.code).toBe(1);
+  expect(failed.stderr).toContain("fixture installer failed");
+  expect(failed.stderr).not.toMatch(/\[\d+s\]|\x1b\[2K/);
+});
 
 test("terminal color detection is per stream and explicit disable wins", async () => {
   const out = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");

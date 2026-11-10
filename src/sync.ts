@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { ParsedCommand } from "./commands";
 import { CliError } from "./errors";
-import { paint } from "./output";
+import { paint, withProgress } from "./output";
 import { readLock, writeLock, requireProject, loadoutPaths, validateLockedLoadout, type Lock } from "./lock";
 import { readConfig, parseHarnesses } from "./config";
 import { readLoadout, openCatalog } from "./catalog";
@@ -108,7 +108,7 @@ export function missingArtifacts(project: string, lock: Lock): string[] {
   return [...missing, ...missingInstallerArtifacts(project, lock), ...packageSkillStatus(project, lock).changed.map(p => `package skills need synchronization: ${p}`)];
 }
 export async function sync(project: string, lock: Lock, opts?: {check?: boolean; beforeApply?: () => string | void; repair?: boolean; updateSkills?: boolean}): Promise<{added: string[]; removed: string[]; files: string[]}> {
-  const loaded = await loadedLoadouts(lock), want = desired(lock, loaded);
+  const loaded = await withProgress("Reading loadouts", loadedLoadouts(lock)), want = desired(lock, loaded);
   checkInstallerPrerequisites([...want.keys()]);
   const added = [...want.keys()].filter(k => !Object.hasOwn(lock.installed, k) || lock.pending?.includes(k) || (k.startsWith("skill:") && (opts?.updateSkills || (opts?.repair && (lock.incomplete || missingSkills(project, lock.installed[k] ?? [], k.split(":")[1] as Harness))))));
   const removed = [...new Set([...Object.keys(lock.installed), ...(lock.pending ?? [])])].filter(k => !want.has(k) && !k.startsWith("package-skill:"));
@@ -130,7 +130,7 @@ export async function sync(project: string, lock: Lock, opts?: {check?: boolean;
   }
   const previousLock = existsSync(join(project, "loadouts.lock.json")) ? readLock(project) : null;
   const nativeConfig = lock.harnesses.includes("codex") || existsSync(codexConfigPath(project)) ? prepareCodexConfig(project, lock, want) : null;
-  const applyInstallers = await prepareInstallers(project, lock, [...want.keys()]);
+  const applyInstallers = await withProgress("Preparing project integrations", prepareInstallers(project, lock, [...want.keys()]));
   let previous: ReturnType<typeof desired> | null = null, checkRetained = false;
   const changed = previousLock && (JSON.stringify(previousLock.resolved) !== JSON.stringify(lock.resolved) || previousLock.catalog?.commit !== lock.catalog?.commit || JSON.stringify(previousLock.local) !== JSON.stringify(lock.local));
   if (changed && [...want.keys()].some(k => k.startsWith("mcp:") && !added.includes(k))) {
@@ -142,7 +142,7 @@ export async function sync(project: string, lock: Lock, opts?: {check?: boolean;
   if (ensureLocalCatalog(project)) files.push(".loadouts/.gitkeep");
   if (opts?.check !== false) for (const key of mcpChecks) {
     const {mcp, itemId} = want.get(key)!;
-    const check = await checkMcp(expandProject(mcp!, project));
+    const check = await withProgress(`Checking MCP server ${key.split(":")[2]}`, checkMcp(expandProject(mcp!, project)));
     if (!check.ok) throw new CliError(`MCP server ${key.split(":")[2]} (${itemId}) is not reachable: ${check.reason}`, 1, "fix the server definition in the catalog or pick another alternative with --with");
   }
   const clearPending = (key: string) => { if (lock.pending) { lock.pending = lock.pending.filter(k => k !== key); if (!lock.pending.length) delete lock.pending; } };
@@ -172,14 +172,16 @@ export async function sync(project: string, lock: Lock, opts?: {check?: boolean;
       const shared = new Set(Object.entries(lock.installed).filter(([k]) => k !== key && k.startsWith("skill:") && want.has(k)).flatMap(([, names]) => names));
       const names = (lock.installed[key] ?? []).filter(n => !retained.has(n));
       if (h === "claude-code") removeSkillLinks(project, names.filter(n => shared.has(n)));
-      await removeSkills(project, names.filter(n => !shared.has(n)), h);
+      await withProgress(`Removing skills from ${h}`, removeSkills(project, names.filter(n => !shared.has(n)), h));
       delete lock.installed[key]; clearPending(key);
     }
     const updated = new Map<string, string[]>();
     for (const key of added.filter(k => k.startsWith("skill:"))) {
       const [, h, identifier] = key.split(":");
       try {
-        const installed = await installSkills(project, identifier!, h as Harness, {names: updated.get(identifier!) ?? lock.installed[key], pending: lock.pending?.includes(key), update: opts?.updateSkills && !updated.has(identifier!)});
+        const installed = await withProgress(`Installing ${identifier} for ${h}`, installSkills(project, identifier!, h as Harness, {
+          names: updated.get(identifier!) ?? lock.installed[key], pending: lock.pending?.includes(key), update: opts?.updateSkills && !updated.has(identifier!),
+        }));
         updated.set(identifier!, installed);
         lock.installed[key] = [...new Set([...(lock.installed[key] ?? []), ...installed])];
         clearPending(key);
@@ -201,7 +203,7 @@ export async function sync(project: string, lock: Lock, opts?: {check?: boolean;
     if (lock.harnesses.includes("codex") && ensureGitignore(project)) files.push(".gitignore");
     for (const key of want.keys()) if (key.startsWith("mcp:codex:")) lock.installed[key] = [];
     const repairInstallers = missingInstallerArtifacts(project, lock).length > 0;
-    await applyInstallers();
+    await withProgress("Applying project integrations", applyInstallers());
     if (repairInstallers) files.push(".loadouts/installers/");
     const guidance = join(project, ".loadouts/installers/codebase-memory.md");
     const section = renderSection(Object.entries(loaded).map(([name, loadout]) => ({loadout, choices: lock.loadouts[name]!})), lock.harnesses, lock.installed, existsSync(guidance) ? readFileSync(guidance, "utf8") : "");
@@ -217,7 +219,7 @@ export async function sync(project: string, lock: Lock, opts?: {check?: boolean;
 export async function install(project: string, opts?: {manifest?: Manifest; update?: boolean; refreshLocal?: string[] | true}): Promise<void> {
   const manifest = opts?.manifest ?? readManifest(project);
   const previous = existsSync(join(project, "loadouts.lock.json")) ? readLock(project) : undefined;
-  const lock = await resolveManifest(project, manifest, previous, opts);
+  const lock = await withProgress("Resolving loadout sources", resolveManifest(project, manifest, previous, opts));
   if (opts?.update) for (const [name, entry] of Object.entries(lock.resolved ?? {})) {
     const old = previous?.resolved?.[name]?.catalog;
     if (old && entry.catalog && old.commit !== entry.catalog.commit) console.log(`${paint(name, "blue")}: ${paint(old.ref, "dim")} → ${entry.catalog.ref}`);
