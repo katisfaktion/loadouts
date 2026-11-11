@@ -1,13 +1,13 @@
-# Configuration and workflow reference
+# Loadouts concepts and configuration
 
-For a first installation, follow the [README](../README.md). Use `loadouts help COMMAND` for flags and examples.
+A loadout describes the equipment for a kind of work. A project selects loadouts in its manifest, and installation resolves those selections into native agent configuration. This reference describes the files, how their scopes interact and what the locks guarantee. For task instructions, agents can run `loadouts agents`.
 
-- [Select sources and restore a checkout](#project-manifest-and-installation)
-- [Write loadout YAML and choices](#compose-and-adapt-reusable-entries)
+- [Project manifest, sources and locks](#project-manifest-and-installation)
+- [Composition and choices](#compose-and-adapt-reusable-entries)
 - [Select package companion skills](#package-companion-skills)
-- [Configure agents and diagnose a project](#agent-configuration-and-diagnostics)
+- [Agent configuration and diagnostics](#agent-configuration-and-diagnostics)
 - [Use native Codex plugins](#native-codex-plugins) or [the codebase-memory installer](#installer-integrations)
-- [Explore with an agent](#agent-assisted-exploration)
+- [Exploration and local adaptations](#agent-assisted-exploration)
 - [Maintain a shared catalog](#shared-catalog-repositories) and [contribute a local loadout](#publish-a-verified-loadout)
 - [Release the CLI](#releasing-the-cli)
 
@@ -166,7 +166,7 @@ To replace a Git skill with its package companion of the same name, remove the G
 
 ## Agent configuration and diagnostics
 
-`setup` writes machine defaults and a `LOADOUTS.md` help reference beside each selected agent's global instructions. Project selections live in the project. Open Claude Code, Codex CLI or Codex Desktop normally to use their native project files. `loadouts claude` and `loadouts codex` add a read-only preflight and forward your arguments. Each agent keeps its normal personal configuration, authentication and trust settings. Use `loadouts help codex` or `loadouts help claude` for launcher help.
+`setup` writes machine defaults and a `LOADOUTS.md` file beside each selected agent's global instructions. The instructions import that file, which directs agents to `loadouts agents` when creating, changing, troubleshooting or sharing a loadout. Project selections live in the project. Open Claude Code, Codex CLI or Codex Desktop normally to use their native project files. `loadouts claude` and `loadouts codex` add a read-only preflight and forward your arguments. Each agent keeps its normal personal configuration, authentication and trust settings. Use `loadouts help codex` or `loadouts help claude` for launcher help.
 
 | Command | What it tells you |
 | --- | --- |
@@ -232,14 +232,11 @@ Removing the selection removes its owned project configuration. The shared execu
 
 ## Agent-assisted exploration
 
-Ask your agent to propose a setup for the project. `loadouts agents` lists the bundled workflows. `loadouts agents explore` prints the exploration guide as Markdown and works offline before initialization. The earlier `loadouts explore` spelling remains an alias. [Exploration skill](../skills/loadouts-explore/SKILL.md)
+Exploration produces a proposal, which may include shared entries and new or adapted local YAML. A valid draft can exist before project initialization. Validation checks the file locally. Installation resolves its active includes, and using the setup on a real task provides evidence of its usefulness.
 
-1. Read the project's manifests and inspect existing project and user tools with `loadouts inspect --json`. Check which native plugins supply hooks as well as skills.
-2. Look in the configured catalog first. Read promising entries and their active includes. For unmet needs, run `npx skills find` for each relevant part of the stack and verify candidates against their upstream documentation.
-3. Select suitable shared entries in the proposal. For each gap, use `loadouts create NAME` to draft a focused local definition and `loadouts validate .loadouts/catalog/NAME.yml` to check it. Validation checks the file, defaults and routing offline. Installation resolves the include graph.
-4. Review the proposed sources, choices and conventions. Apply the approved selections with `loadouts add`. Trying the setup on real work is a separate step.
+An adaptation is a copy with an independent local source. `create --from` reads the project's locked default catalog or the machine default. The copy does not record its upstream base automatically. Keeping the upstream path, ref and commit in a comment or review notes makes a later catalog comparison possible.
 
-To adapt a shared entry, `loadouts create NAME --from NAME` uses the project's locked default catalog, falling back to the machine default. For another catalog, create a draft and copy from verified upstream YAML. Record the source path, ref and commit in a comment or review notes so the agent can compare changes later. Creation preserves existing drafts.
+The CLI bundles Markdown guides for exploration, application, diagnosis and publication. They can be read offline before setup. The earlier `loadouts explore` spelling remains an alias for `loadouts agents explore`.
 
 ## Shared catalog repositories
 
@@ -279,15 +276,11 @@ The Git tag identifies the CLI release. The `schemas/v1/` directory identifies t
 
 ### Publish a verified loadout
 
-Run `loadouts agents publish` to read the bundled publishing guide offline. Use the same name as the upstream entry if you mean to change it. After trying the local setup on real work, ask the agent to diff the draft against its original commit and the catalog's current default branch. Preserve intervening upstream changes. Validate and install the reconciled draft and verify its behavior again.
+A contribution proposes one applied local definition at `loadouts/NAME.yml` in the target catalog. Keeping the upstream name updates that entry. Renaming the local loadout proposes a new entry. Publication copies the complete YAML, so the contributor reconciles intervening catalog changes first.
 
-```sh
-loadouts publish testing --catalog OWNER/REPO --summary 'Verified on a regression fix in the CLI project'
-```
+Preview checks the applied local definition and its active graph using the existing cache of pinned catalog definitions. All includes in the proposed file and inspected active definitions must use portable GitHub sources, including declarations in inactive branches. The verification summary covers the selected alternatives only.
 
-Replace the sample summary with the work you actually performed. Preview requires an applied local definition and the verified active graph. It checks the local Git cache without contacting GitHub. If pinned definitions are missing, restore the cache with `loadouts install`. Every include in the file being published and in inspected active definitions must use a portable GitHub source, even inside an inactive branch. Publish local dependencies first. Verification covers the selected alternatives only.
-
-Add `--yes` to copy the complete chosen YAML into `loadouts/NAME.yml` on a contribution branch and open a PR with authenticated `gh`. Includes keep their sources. The CLI uses a fork when needed and includes the destination PR template when present. Review and merge happen in the catalog. Once the shared entry is available, switch the consuming project explicitly with `loadouts add github:OWNER/REPO/NAME@REF`.
+Opening the PR requires authenticated GitHub access and explicit approval. The CLI includes the catalog's PR template when present and uses a fork when needed. The project's source stays local until it explicitly selects the shared entry after publication.
 
 ## Releasing the CLI
 

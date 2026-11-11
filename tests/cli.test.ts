@@ -3,11 +3,12 @@ import { COMMANDS } from "../src/cli";
 import { run, tempEnv } from "./helpers";
 import { readdirSync } from "node:fs";
 
-test("help teaches the typical flow", async () => {
+test("help starts with workflow discovery and points to command syntax", async () => {
   const r = await run(["help"]);
   expect(r.code).toBe(0);
-  expect(r.stdout).toContain("loadouts add");
-  expect(r.stdout).toContain("Typical flow");
+  expect(r.stdout).toMatch(/Commands:\n  agents\s/);
+  expect(r.stdout).toContain("loadouts help <command>");
+  expect(r.stdout).not.toContain("loadouts add base frontend backend");
 });
 
 test("root help aliases show compact grouped commands", async () => {
@@ -62,6 +63,9 @@ test("install and add help explain committed sources and restoration", async () 
   const install = await run(["help", "install"]), add = await run(["help", "add"]);
   for (const text of ["loadouts.json", "loadouts.lock.json", "file:./.loadouts/catalog/", "github:", "loadouts update"]) expect(install.stdout).toContain(text);
   expect(add.stdout).toContain("file:./.loadouts/catalog/");
+  expect(install.stdout).toContain("loadouts agents apply");
+  expect(install.stdout).toContain("loadouts agents diagnose");
+  expect(install.stdout).not.toContain("Example loadouts.json:");
 });
 
 test("install help describes release lock v1 without development migrations", async () => {

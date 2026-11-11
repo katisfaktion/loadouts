@@ -22,14 +22,25 @@ export function readConfig(): UserConfig {
 export function setup(config: UserConfig): string[] {
   const changed: string[] = [];
   if (writeIfChanged(configFile(), `catalog = ${JSON.stringify(config.catalog)}\nharnesses = ${JSON.stringify(config.harnesses)}\n`)) changed.push(configFile());
-  const hints = ["Agent setups are managed by `loadouts`; see `loadouts help`.", "Read bundled workflow guides with `loadouts agents`."];
+  const pointer = "When asked to set up, restore, change, troubleshoot or share project loadouts, run `loadouts agents` and read the matching guide.";
+  const previousHints = ["Agent setups are managed by `loadouts`; see `loadouts help`.", "Read bundled workflow guides with `loadouts agents`."];
   for (const h of config.harnesses) {
     const dir = join(home(), h === "codex" ? ".codex" : ".claude");
     const guide = join(dir, "LOADOUTS.md");
     const notes = existsSync(guide) ? readFileSync(guide, "utf8") : "";
-    const missing = hints.filter(line => !notes.includes(line));
     const newline = notes.includes("\r\n") ? "\r\n" : "\n";
-    if (missing.length && writeIfChanged(guide, notes + (notes && !notes.endsWith("\n") ? newline : "") + missing.join(newline) + newline)) changed.push(guide);
+    let hasPointer = false;
+    let updated = "";
+    for (const line of notes.split(/(?<=\n)/)) {
+      const content = line.replace(/\r?\n$/, "");
+      if (content !== pointer && !previousHints.includes(content)) updated += line;
+      else if (!hasPointer) {
+        updated += pointer + line.slice(content.length);
+        hasPointer = true;
+      }
+    }
+    if (!hasPointer) updated += (updated && !updated.endsWith("\n") ? newline : "") + pointer + newline;
+    if (writeIfChanged(guide, updated)) changed.push(guide);
     const reference = h === "codex" ? `@${guide}` : "@LOADOUTS.md";
     const file = join(dir, h === "codex" ? "AGENTS.md" : "CLAUDE.md");
     const text = existsSync(file) ? readFileSync(file, "utf8") : "";

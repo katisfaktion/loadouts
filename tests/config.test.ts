@@ -3,6 +3,8 @@ import { existsSync, readFileSync, statSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tempEnv, fixtureCatalog, run } from "./helpers";
 
+const pointer = "When asked to set up, restore, change, troubleshoot or share project loadouts, run `loadouts agents` and read the matching guide.";
+
 test("setup is idempotent and supplies catalog defaults", async () => {
   const t = tempEnv(), catalog = fixtureCatalog(), opts = { cwd: t.project, env: t.env };
   const args = ["setup", "--catalog", catalog, "--harness", "claude-code,codex"];
@@ -11,7 +13,7 @@ test("setup is idempotent and supplies catalog defaults", async () => {
   expect(readFileSync(join(t.home, ".claude/CLAUDE.md"), "utf8")).toBe("@LOADOUTS.md\n");
   expect(readFileSync(join(t.home, ".codex/AGENTS.md"), "utf8")).toBe(`@${join(t.home, ".codex/LOADOUTS.md")}\n`);
   for (const dir of [".claude", ".codex"]) {
-    expect(readFileSync(join(t.home, dir, "LOADOUTS.md"), "utf8")).toBe("Agent setups are managed by `loadouts`; see `loadouts help`.\nRead bundled workflow guides with `loadouts agents`.\n");
+    expect(readFileSync(join(t.home, dir, "LOADOUTS.md"), "utf8")).toBe(pointer + "\n");
   }
   expect((await run(["show", "base", "--json"], opts)).code).toBe(0);
 });
@@ -28,7 +30,7 @@ test("setup preserves existing instructions and loadout notes", async () => {
   for (const [dir, name] of [[".claude", "CLAUDE.md"], [".codex", "AGENTS.md"]]) {
     const reference = dir === ".claude" ? "@LOADOUTS.md" : `@${join(t.home, dir, "LOADOUTS.md")}`;
     expect(readFileSync(join(t.home, dir, name), "utf8")).toBe(`@RTK.md\n${sentence}\n\nKeep these instructions.\n${reference}\n`);
-    expect(readFileSync(join(t.home, dir, "LOADOUTS.md"), "utf8")).toBe(`Keep these loadout notes.\n${sentence}\nRead bundled workflow guides with \`loadouts agents\`.\n`);
+    expect(readFileSync(join(t.home, dir, "LOADOUTS.md"), "utf8")).toBe(`Keep these loadout notes.\n${pointer}\n`);
   }
   expect((await run(args, opts)).stdout).toContain("Nothing changed.");
 });
@@ -49,7 +51,19 @@ test("setup preserves existing references and CRLF line endings", async () => {
   await Bun.write(join(dir, "LOADOUTS.md"), `Custom notes.\r\n${sentence}\r\n`);
   expect((await run(["setup", "--catalog", "acme/repo", "--harness", "claude-code"], {cwd: t.project, env: t.env})).code).toBe(0);
   expect(readFileSync(join(dir, "CLAUDE.md"), "utf8")).toBe("@RTK.md\r\n@LOADOUTS.md\r\n");
-  expect(readFileSync(join(dir, "LOADOUTS.md"), "utf8")).toBe(`Custom notes.\r\n${sentence}\r\nRead bundled workflow guides with \`loadouts agents\`.\r\n`);
+  expect(readFileSync(join(dir, "LOADOUTS.md"), "utf8")).toBe(`Custom notes.\r\n${pointer}\r\n`);
+});
+test("setup replaces its two previous hint lines and preserves surrounding user notes", async () => {
+  const t = tempEnv(), dir = join(t.home, ".codex");
+  mkdirSync(dir);
+  const guide = join(dir, "LOADOUTS.md");
+  const old = "Agent setups are managed by `loadouts`; see `loadouts help`.";
+  await Bun.write(guide, `My note: ${old}\n${old}\nRead bundled workflow guides with \`loadouts agents\`.\nKeep my footer.`);
+  const args = ["setup", "--catalog", "acme/repo", "--harness", "codex"];
+  const opts = {cwd: t.project, env: t.env};
+  expect((await run(args, opts)).code).toBe(0);
+  expect(readFileSync(guide, "utf8")).toBe(`My note: ${old}\n${pointer}\nKeep my footer.`);
+  expect((await run(args, opts)).stdout).toContain("Nothing changed.");
 });
 test("init selects harnesses without overwriting an existing project", async () => {
   const t = tempEnv(), opts = { cwd: t.project, env: t.env };

@@ -4,6 +4,7 @@ import { map, multiple } from "@optique/core/modifiers";
 import { parseSync } from "@optique/core/parser";
 import { choice, string } from "@optique/core/valueparser";
 import { formatMessage, message, text } from "@optique/core/message";
+import { guides } from "./guides";
 import { CliError } from "./errors";
 
 export interface ParsedCommand {
@@ -27,7 +28,7 @@ const empty = constant({});
 const groupMember = tuple([arg("LOADOUT/PATH"), arg("MEMBER")]);
 
 export const commandParsers = {
-  agents: object({positionals: multiple(argument(choice(["explore", "publish"], {metavar: "GUIDE"})), {max: 1}), values: empty}),
+  agents: object({positionals: multiple(argument(choice(Object.keys(guides), {metavar: "GUIDE"})), {max: 1}), values: empty}),
   explore: object({positionals: none, values: empty}),
   validate: object({positionals: tuple([arg("FILE")]), values: empty}),
   inspect: object({positionals: none, values: object({json})}),
