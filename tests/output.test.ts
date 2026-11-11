@@ -157,3 +157,14 @@ items:
   expect((await call("disable", "testing/tools", "browser")).removedChoices).toEqual(["testing/tools/browser/runner"]);
   await call("update"); await call("harness", "add", "claude-code"); await call("remove", "testing");
 });
+
+test("each root help command group has a distinct color", async () => {
+  const help = await run(["help"], {env: {...plainEnv, FORCE_COLOR: "1"}});
+  const groups = [...help.stdout.matchAll(/^\x1b\[(\d+)m(?:Guidance|Workflow|Diagnostics|Setup):\x1b\[0m\n((?:  [^\n]+\n)+)/gm)];
+  expect(groups).toHaveLength(4);
+  const colors = groups.map(([, color, commands]) => {
+    for (const row of commands!.trimEnd().split("\n")) expect(row.startsWith(`  \x1b[${color}m`)).toBe(true);
+    return color;
+  });
+  expect(new Set(colors).size).toBe(groups.length);
+});

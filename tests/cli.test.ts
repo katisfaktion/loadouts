@@ -6,7 +6,7 @@ import { readdirSync } from "node:fs";
 test("help starts with workflow discovery and points to command syntax", async () => {
   const r = await run(["help"]);
   expect(r.code).toBe(0);
-  expect(r.stdout).toMatch(/Commands:\n  agents\s/);
+  expect(r.stdout).toMatch(/Guidance:\n  agents\s/);
   expect(r.stdout).toContain("loadouts help <command>");
   expect(r.stdout).not.toContain("loadouts add base frontend backend");
 });
@@ -19,7 +19,14 @@ test("root help aliases show compact grouped commands", async () => {
   }
   expect(help.stdout).toContain("Usage: loadouts");
   expect(help.stdout).toMatch(/\n  install\s+.*\n  add\s+/);
-  expect(help.stdout).toContain("Commands:");
+  const groups = [...help.stdout.matchAll(/^(Guidance|Workflow|Diagnostics|Setup):\n((?:  [^\n]+\n)+)/gm)];
+  expect(groups.map(group => group[1])).toEqual(["Guidance", "Workflow", "Diagnostics", "Setup"]);
+  const commands = groups.map(group => [...group[2]!.matchAll(/^  (\w+)/gm)].map(row => row[1]!));
+  expect(commands[0]).toEqual(["agents", "help"]);
+  expect(commands[1]).toEqual(expect.arrayContaining(["list", "show", "install", "publish", "claude", "codex"]));
+  expect(commands[2]).toEqual(expect.arrayContaining(["inspect", "status", "doctor", "validate"]));
+  expect(commands[3]).toEqual(expect.arrayContaining(["setup", "init", "harness", "global"]));
+  expect(commands.flat().sort()).toEqual(Object.keys(COMMANDS).sort());
   expect(help.stdout).toContain("Flags:");
 });
 

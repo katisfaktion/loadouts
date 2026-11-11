@@ -35,16 +35,18 @@ export function helpText(command?: string): string {
     }, {colors: colorsEnabled(), theme, termWidth: "auto", showChoices: true, maxWidth: process.stdout.columns || 100});
     return `${c.summary}\n\n${text}\nExamples:\n${c.examples.map(example => "  " + paint(example, "dim")).join("\n")}${command === "claude" || command === "codex" ? "\n\nThe read-only preflight checks the manifest, lock and installed artifacts, then forwards arguments and environment unchanged. Run loadouts install to repair missing setup. Ordinary launches and Codex Desktop use the same native project files without this check. Personal configuration still loads; Codex project configuration and hooks require native trust. Neither launcher installs, writes configuration, or changes CODEX_HOME." : ""}\n\nExit codes: 0 success; 1 check failed; 2 usage error; 3 environment missing.`;
   }
-  const groups: [Tone, string[]][] = [
-    ["cyan", ["agents"]],
-    ["magenta", ["claude", "codex"]],
-    ["blue", ["install", "add", "remove", "update", "switch", "enable", "disable", "harness"]],
-    ["yellow", ["list", "show", "status", "doctor", "inspect"]],
-    ["cyan", ["init", "setup", "create", "validate", "publish", "global", "help"]],
+  const groups: [string, Tone, string[]][] = [
+    ["Guidance", "green", ["agents", "help"]],
+    ["Workflow", "blue", ["list", "show", "create", "install", "add", "switch", "enable", "disable", "remove", "update", "publish", "claude", "codex"]],
+    ["Diagnostics", "yellow", ["inspect", "status", "validate", "doctor"]],
+    ["Setup", "cyan", ["init", "harness", "setup", "global"]],
   ];
-  const rows = groups.map(([tone, names]) => names.map(name => {
-    const c = COMMANDS[name]!;
-    return `  ${paint(name.padEnd(10), tone)}${paint((c.hint ?? "").padEnd(25), "dim")}${c.brief}`;
-  }).join("\n")).join("\n\n");
-  return `${paint("loadouts", "magenta")} manages project agent setups. ${paint(`(${version})`, "dim")}\n\nUsage: loadouts <command> ${paint("[...flags]", "cyan")} [...args]\n\nCommands:\n${rows}\n\nFlags:\n  ${paint("-h, --help", "cyan")}                         Show usage, flags and examples.\n\nRead loadouts help <command> for syntax and examples. Use --json for structured inspection, catalog discovery and project selection or installation results.`;
+  const rows = groups.map(([heading, tone, names]) => {
+    const commands = names.map(name => {
+      const c = COMMANDS[name]!;
+      return `  ${paint(name.padEnd(10), tone)}${paint((c.hint ?? "").padEnd(25), "dim")}${c.brief}`;
+    });
+    return [paint(heading + ":", tone), ...commands].join("\n");
+  }).join("\n\n");
+  return `${paint("loadouts", "magenta")} manages project agent setups. ${paint(`(${version})`, "dim")}\n\nUsage: loadouts <command> ${paint("[...flags]", "cyan")} [...args]\n\n${rows}\n\nFlags:\n  ${paint("-h, --help", "cyan")}                         Show usage, flags and examples.\n\nRead loadouts help <command> for syntax and examples. Use --json for structured inspection, catalog discovery and project selection or installation results.`;
 }
