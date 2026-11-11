@@ -26,14 +26,16 @@ for (const platform of platforms) {
   }, null, 2) + "\n");
 }
 
-const dir = join(out, "loadouts");
-mkdirSync(join(dir, "bin"), { recursive: true });
-copyFileSync(join(import.meta.dir, "../npm/loadouts.cjs"), join(dir, "bin/loadouts.cjs"));
-chmodSync(join(dir, "bin/loadouts.cjs"), 0o755);
-copyFileSync("README.md", join(dir, "README.md"));
-copyFileSync("LICENSE", join(dir, "LICENSE"));
-writeFileSync(join(dir, "package.json"), JSON.stringify({
-  ...metadata, name, description, keywords,
-  bin: { loadouts: "bin/loadouts.cjs" }, files: ["bin"], engines: { node: ">=22" },
-  optionalDependencies: Object.fromEntries(platforms.map(platform => [`${name}-${platform}`, version])),
-}, null, 2) + "\n");
+for (const launcher of [name, "agent-loadouts"]) {
+  const dir = join(out, launcher.split("/").at(-1)!);
+  mkdirSync(join(dir, "bin"), { recursive: true });
+  copyFileSync(join(import.meta.dir, "../npm/loadouts.cjs"), join(dir, "bin/loadouts.cjs"));
+  chmodSync(join(dir, "bin/loadouts.cjs"), 0o755);
+  copyFileSync("README.md", join(dir, "README.md"));
+  copyFileSync("LICENSE", join(dir, "LICENSE"));
+  writeFileSync(join(dir, "package.json"), JSON.stringify({
+    ...metadata, name: launcher, description, keywords,
+    bin: { loadouts: "bin/loadouts.cjs" }, files: ["bin"], engines: { node: ">=22" },
+    optionalDependencies: Object.fromEntries(platforms.map(platform => [`${name}-${platform}`, version])),
+  }, null, 2) + "\n");
+}

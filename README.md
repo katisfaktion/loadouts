@@ -21,6 +21,8 @@ If the repository already has a setup, the request is shorter:
 
 The agent runs the CLI. You decide which tools and conventions belong in the project. To make the bundled guides discoverable in future sessions, ask the agent to configure loadouts for the agents you use. That adds a short reference to their user-level instructions. You can continue opening each agent normally.
 
+You can also run the same CLI with `npx agent-loadouts help` or install it with `npm install -g agent-loadouts`. Both package names provide the `loadouts` command.
+
 The npm package provides a native binary for Linux (glibc) and macOS on x64 or arm64, and Windows on x64. Installing skills requires Node.js 22.20.0 or later with `npx`. Standalone binaries are also available. [GitHub Releases](https://github.com/katisfaktion/loadouts/releases)
 
 ## From a local experiment to a shared loadout
