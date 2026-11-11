@@ -30,13 +30,6 @@ export const COMMANDS: Record<string, { brief: string; hint?: string; summary: s
       return 0;
     },
   },
-  explore: {brief: "Alias for loadouts agents explore.",
-    summary: "Print agent guidance to reuse suitable catalog entries, search remaining gaps with npx skills find, and create focused drafts. Default to direct manifest selections; use composition YAML for reusable bundles. Review included instructions and conventions for conflicts. Does not launch an agent or install anything.",
-    examples: ["loadouts agents explore", "loadouts explore"],
-    run: async args => {
-      console.log(guides.explore!.body); return 0;
-    },
-  },
   validate: {brief: "Validate a loadout YAML file.", hint: "FILE",
     summary: "Validate one YAML file offline, including include entry shape and local routing references, without initializing or installing. Does not fetch descendants, resolve graph conflicts or certify semantic compatibility.",
     examples: ["loadouts validate .loadouts/catalog/backend.yml"],
@@ -127,10 +120,10 @@ export const COMMANDS: Record<string, { brief: string; hint?: string; summary: s
     run: async args => { printChanges(await update(requireProject(process.cwd()))); return 0; },
   },
   doctor: {brief: "Check setup and explain how to fix problems.",
-    summary: "Check manifest drift, local/shared name collisions, effective inherited conflicts, missing artifacts and MCP reachability without applying changes.", examples: ["loadouts doctor --json"],
+    summary: "Check the machine defaults, workflow guides and imports written by setup. Inside a project, also check manifest drift, local/shared name collisions, inherited conflicts, missing artifacts and MCP reachability.", examples: ["loadouts doctor --json"],
     run: async args => {
       const {values} = args;
-      const findings = await doctor(requireProject(process.cwd()));
+      const findings = await doctor(process.cwd());
       console.log(values.json ? JSON.stringify({findings}, null, 2) : findings.length ? findings.map(f => `${paint("warning:", "yellow")} ${f.message}\n  ${paint("fix:", "cyan")} ${f.fix}`).join("\n\n") : paint("No problems found.", "green"));
       return findings.length ? 1 : 0;
     },

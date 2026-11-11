@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { parseCommand } from "../src/commands";
 
 test.each([
-  ["explore"], ["validate", "draft.yml"], ["inspect", "--json"],
+  ["agents", "explore"], ["validate", "draft.yml"], ["inspect", "--json"],
   ["setup", "--catalog", "acme/catalog", "--harness", "codex"], ["init"], ["install"],
   ["create", "backend", "--from", "base"], ["publish", "base", "--summary", "Verified", "--yes"],
   ["status"], ["remove", "base"], ["switch", "base/runtime", "bun"],
@@ -13,7 +13,7 @@ test.each([
 ])("parses %j", (...args) => { expect(parseCommand(args).name).toBe(args[0]); });
 
 test.each([
-  ["install", "extra"], ["explore", "extra"], ["setup", "extra"], ["validate"],
+  ["install", "extra"], ["agents", "explore", "extra"], ["setup", "extra"], ["validate"],
   ["validate", "one", "two"], ["add"], ["switch", "base/runtime"], ["harness", "oops", "codex"],
   ["global", "oops"], ["doctor", "--unknown"], ["help", "add", "extra"], ["create", "base", "--from"],
 ])("rejects invalid arguments %j with usage error", (...args) => {

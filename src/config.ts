@@ -19,32 +19,43 @@ export function readConfig(): UserConfig {
     return { catalog: c.catalog, harnesses: parseHarnesses(c.harnesses.join(",")) };
   } catch { throw new CliError(`invalid config ${file}`, 1, "run loadouts setup --catalog <repo> --harness claude-code,codex"); }
 }
+function updateGuide(notes: string): string {
+  const pointer = "When asked to set up, restore, change, troubleshoot or share project loadouts, run `loadouts agents` and read the matching guide.";
+  const previousHints = ["Agent setups are managed by `loadouts`; see `loadouts help`.", "Read bundled workflow guides with `loadouts agents`."];
+  const newline = notes.includes("\r\n") ? "\r\n" : "\n";
+  let hasPointer = false;
+  let updated = "";
+  for (const line of notes.split(/(?<=\n)/)) {
+    const content = line.replace(/\r?\n$/, "");
+    if (content !== pointer && !previousHints.includes(content)) updated += line;
+    else if (!hasPointer) {
+      updated += pointer + line.slice(content.length);
+      hasPointer = true;
+    }
+  }
+  if (!hasPointer) updated += (updated && !updated.endsWith("\n") ? newline : "") + pointer + newline;
+  return updated;
+}
+
+export function setupInstructions(harnesses: Harness[]) {
+  return harnesses.flatMap(harness => {
+    const dir = join(home(), harness === "codex" ? ".codex" : ".claude");
+    const guide = join(dir, "LOADOUTS.md");
+    const reference = harness === "codex" ? `@${guide}` : "@LOADOUTS.md";
+    return [
+      {file: guide, description: "loadouts agents workflow guidance", update: updateGuide},
+      {file: join(dir, harness === "codex" ? "AGENTS.md" : "CLAUDE.md"), description: reference,
+        update: (text: string) => text.split(/\r?\n/).includes(reference) ? text : text + (text && !text.endsWith("\n") ? "\n" : "") + reference + "\n"},
+    ];
+  });
+}
+
 export function setup(config: UserConfig): string[] {
   const changed: string[] = [];
   if (writeIfChanged(configFile(), `catalog = ${JSON.stringify(config.catalog)}\nharnesses = ${JSON.stringify(config.harnesses)}\n`)) changed.push(configFile());
-  const pointer = "When asked to set up, restore, change, troubleshoot or share project loadouts, run `loadouts agents` and read the matching guide.";
-  const previousHints = ["Agent setups are managed by `loadouts`; see `loadouts help`.", "Read bundled workflow guides with `loadouts agents`."];
-  for (const h of config.harnesses) {
-    const dir = join(home(), h === "codex" ? ".codex" : ".claude");
-    const guide = join(dir, "LOADOUTS.md");
-    const notes = existsSync(guide) ? readFileSync(guide, "utf8") : "";
-    const newline = notes.includes("\r\n") ? "\r\n" : "\n";
-    let hasPointer = false;
-    let updated = "";
-    for (const line of notes.split(/(?<=\n)/)) {
-      const content = line.replace(/\r?\n$/, "");
-      if (content !== pointer && !previousHints.includes(content)) updated += line;
-      else if (!hasPointer) {
-        updated += pointer + line.slice(content.length);
-        hasPointer = true;
-      }
-    }
-    if (!hasPointer) updated += (updated && !updated.endsWith("\n") ? newline : "") + pointer + newline;
-    if (writeIfChanged(guide, updated)) changed.push(guide);
-    const reference = h === "codex" ? `@${guide}` : "@LOADOUTS.md";
-    const file = join(dir, h === "codex" ? "AGENTS.md" : "CLAUDE.md");
+  for (const {file, update} of setupInstructions(config.harnesses)) {
     const text = existsSync(file) ? readFileSync(file, "utf8") : "";
-    if (!text.split(/\r?\n/).includes(reference) && writeIfChanged(file, text + (text && !text.endsWith("\n") ? "\n" : "") + reference + "\n")) changed.push(file);
+    if (writeIfChanged(file, update(text))) changed.push(file);
   }
   return changed;
 }

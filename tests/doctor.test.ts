@@ -145,3 +145,46 @@ test("effective inherited MCP alternatives conflict unless the native project di
   writeFileSync(file, readFileSync(file, "utf8") + '\n[mcp_servers.alternative]\nenabled = false\n');
   expect(JSON.parse((await run(["doctor", "--json"], t.opts)).stdout).findings.some((f: any) => f.kind === "conflict")).toBe(false);
 });
+
+test("doctor checks setup before project init and reports broken guide imports alongside project findings", async () => {
+  const t = tempEnv(), opts = {cwd: t.project, env: t.env};
+  const configure = ["setup", "--catalog", fixtureCatalog(), "--harness", "claude-code,codex"];
+  const diagnose = () => run(["doctor", "--json"], opts);
+  expect((await run(configure, opts)).code).toBe(0);
+  const clean = await diagnose();
+  expect(clean.code, clean.stderr).toBe(0);
+  expect(JSON.parse(clean.stdout)).toEqual({findings: []});
+  const codexGuide = join(t.home, ".codex/LOADOUTS.md"), claudeInstructions = join(t.home, ".claude/CLAUDE.md");
+  const stale = "Agent setups are managed by `loadouts`; see `loadouts help`.\n";
+  writeFileSync(codexGuide, stale);
+  writeFileSync(claudeInstructions, "A note mentioning @LOADOUTS.md inline.\r\n");
+  const broken = await diagnose();
+  expect(broken.code).toBe(1);
+  const findings = JSON.parse(broken.stdout).findings;
+  expect(findings).toHaveLength(2);
+  for (const file of [codexGuide, claudeInstructions]) {
+    expect(findings).toContainEqual({kind: "global", message: expect.stringContaining(file), fix: "loadouts setup"});
+  }
+  expect(readFileSync(codexGuide, "utf8")).toBe(stale);
+  expect(readFileSync(claudeInstructions, "utf8")).toContain("inline.");
+  expect((await run(["init"], opts)).code).toBe(0);
+  const projectFindings = JSON.parse((await diagnose()).stdout).findings;
+  for (const finding of findings) expect(projectFindings).toContainEqual(finding);
+  expect(projectFindings).toContainEqual(expect.objectContaining({kind: "local"}));
+  expect((await run(["setup"], opts)).code).toBe(0);
+  expect(JSON.parse((await diagnose()).stdout).findings.every((f: any) => f.kind === "local")).toBe(true);
+});
+
+test("doctor checks only configured harnesses and reports missing files and invalid machine config", async () => {
+  const t = tempEnv(), opts = {cwd: t.project, env: t.env};
+  expect((await run(["setup", "--harness", "codex"], opts)).code).toBe(0);
+  const guide = join(t.home, ".codex/LOADOUTS.md");
+  unlinkSync(guide);
+  const result = await run(["doctor"], opts);
+  expect(result.code).toBe(1); expect(result.stdout).toContain(guide); expect(result.stdout).not.toContain(".claude");
+  expect(existsSync(guide)).toBe(false);
+  writeFileSync(join(t.home, ".config/loadouts/config.toml"), "broken = [");
+  const broken = await run(["doctor", "--json"], opts);
+  expect(broken.code).toBe(1);
+  expect(JSON.parse(broken.stdout).findings).toContainEqual(expect.objectContaining({kind: "global", fix: expect.stringContaining("--catalog")}));
+});

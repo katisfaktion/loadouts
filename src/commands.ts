@@ -29,7 +29,6 @@ const groupMember = tuple([arg("LOADOUT/PATH"), arg("MEMBER")]);
 
 export const commandParsers = {
   agents: object({positionals: multiple(argument(choice(Object.keys(guides), {metavar: "GUIDE"})), {max: 1}), values: empty}),
-  explore: object({positionals: none, values: empty}),
   validate: object({positionals: tuple([arg("FILE")]), values: empty}),
   inspect: object({positionals: none, values: object({json})}),
   setup: object({positionals: none, values: object({catalog, harness})}),

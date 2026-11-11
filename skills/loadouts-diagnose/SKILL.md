@@ -7,7 +7,7 @@ description: Use when a project agent lacks an expected tool, loadouts install f
 
 1. Use `loadouts inspect --json` to see which project and user files declare the tool. This works before initialization. Preserve any warnings about unreadable metadata.
 2. In an initialized project, use `loadouts status --json` to compare the requested source, harness and choices with the applied state. Check whether the item is active, including its parent choice or include.
-3. Run `loadouts doctor --json`. Exit 1 can carry useful findings. Read each finding and its suggested fix. Doctor checks MCP reachability, so it may start a declared server or contact its URL.
+3. Run `loadouts doctor --json`. After machine setup this also works outside a project, where it checks the configured harnesses’ guide imports and workflow guidance. Exit 1 can carry useful findings. Read each finding and its suggested fix. Doctor checks MCP reachability, so it may start a declared server or contact its URL.
 
 Choose the remedy that matches the evidence:
 

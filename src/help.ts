@@ -40,7 +40,7 @@ export function helpText(command?: string): string {
     ["magenta", ["claude", "codex"]],
     ["blue", ["install", "add", "remove", "update", "switch", "enable", "disable", "harness"]],
     ["yellow", ["list", "show", "status", "doctor", "inspect"]],
-    ["cyan", ["init", "setup", "explore", "create", "validate", "publish", "global", "help"]],
+    ["cyan", ["init", "setup", "create", "validate", "publish", "global", "help"]],
   ];
   const rows = groups.map(([tone, names]) => names.map(name => {
     const c = COMMANDS[name]!;

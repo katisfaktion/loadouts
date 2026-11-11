@@ -172,7 +172,7 @@ To replace a Git skill with its package companion of the same name, remove the G
 
 ## Agent configuration and diagnostics
 
-`setup` writes machine defaults and a `LOADOUTS.md` file beside each selected agent's global instructions. The instructions import that file, which directs agents to `loadouts agents` when creating, changing, troubleshooting or sharing a loadout. Project selections live in the project. Open Claude Code, Codex CLI or Codex Desktop normally to use their native project files. `loadouts claude` and `loadouts codex` add a read-only preflight and forward your arguments. Each agent keeps its normal personal configuration, authentication and trust settings. Use `loadouts help codex` or `loadouts help claude` for launcher help.
+`setup` writes machine defaults and a `LOADOUTS.md` file beside each selected agent's global instructions. The instructions import that file, which directs agents to `loadouts agents` when creating, changing, troubleshooting or sharing a loadout. After setup, `loadouts doctor --json` checks the saved config, each selected harness’s instruction import and its workflow guide. It can run outside a project for these machine checks. Project-only setups can skip machine configuration. Open Claude Code, Codex CLI or Codex Desktop normally to use their native project files. `loadouts claude` and `loadouts codex` add a read-only preflight and forward your arguments. Each agent keeps its normal personal configuration, authentication and trust settings. Use `loadouts help codex` or `loadouts help claude` for launcher help.
 
 | Command | What it tells you |
 | --- | --- |
@@ -242,7 +242,7 @@ Exploration produces a proposal, which may include shared entries and new or ada
 
 An adaptation is a copy with an independent local source. `create --from` reads the project's locked default catalog or the machine default. The copy does not record its upstream base automatically. Keeping the upstream path, ref and commit in a comment or review notes makes a later catalog comparison possible.
 
-The CLI bundles Markdown guides for exploration, application, diagnosis and publication. They can be read offline before setup. The earlier `loadouts explore` spelling remains an alias for `loadouts agents explore`.
+The CLI bundles Markdown guides for exploration, application, diagnosis and publication. They can be read offline before setup. Read the exploration guide with `loadouts agents explore`.
 
 ## Shared catalog repositories
 

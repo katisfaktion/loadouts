@@ -83,7 +83,7 @@ test("forced color never changes JSON or raw exploration Markdown", async () => 
     expect(r.stdout).not.toContain("\x1b[");
     expect(() => JSON.parse(r.stdout)).not.toThrow();
   }
-  expect((await run(["explore"], {env})).stdout).toBe((await run(["explore"], {env: plainEnv})).stdout);
+  expect((await run(["agents", "explore"], {env})).stdout).toBe((await run(["agents", "explore"], {env: plainEnv})).stdout);
 });
 
 test("installation summarizes changes, human status explains choices, and reinstall changes nothing", async () => {
