@@ -83,7 +83,7 @@ test("forced color never changes JSON or raw exploration Markdown", async () => 
     expect(r.stdout).not.toContain("\x1b[");
     expect(() => JSON.parse(r.stdout)).not.toThrow();
   }
-  expect((await run(["explore"], {env})).stdout).toBe((await run(["explore"], {env: plainEnv})).stdout);
+  expect((await run(["agents", "explore"], {env})).stdout).toBe((await run(["agents", "explore"], {env: plainEnv})).stdout);
 });
 
 test("installation summarizes changes, human status explains choices, and reinstall changes nothing", async () => {
@@ -113,7 +113,7 @@ test("installation summarizes changes, human status explains choices, and reinst
 
 test("human findings and package warnings are colored and actionable; JSON stays raw", async () => {
   const t = tempEnv(), opts = {cwd: t.project, env: {...t.env, ...plainEnv, FORCE_COLOR: "1"}};
-  expect((await run(["setup", "--catalog", fixtureCatalog(), "--harness", "codex"], opts)).code).toBe(0);
+  expect((await run(["global", "configure", "--catalog", fixtureCatalog(), "--harness", "codex"], opts)).code).toBe(0);
   expect((await run(["init"], opts)).code).toBe(0);
   const doctor = await run(["doctor"], opts);
   expect(doctor.code).toBe(1); expect(doctor.stdout).toContain("\x1b[33m");
@@ -129,4 +129,52 @@ test("human findings and package warnings are colored and actionable; JSON stays
     expect(r.code, r.stderr).toBe(0); expect(r.stdout).not.toContain("\x1b[");
     expect(() => JSON.parse(r.stdout)).not.toThrow();
   }
+});
+
+test("selection commands report one JSON result, including nested choice cleanup and installer notes", async () => {
+  const t = tempEnv(), opts = {cwd: t.project, env: {...t.env, FORCE_COLOR: "1"}};
+  await run(["init", "--harness", "codex"], opts);
+  writeFileSync(join(t.project, ".loadouts/catalog/testing.yml"), `name: testing
+items:
+  helpers: {packageSkills: {include: [missing-library]}}
+  tools:
+    any_of:
+      browser:
+        items:
+          runner: {one_of: {a: {}, b: {}}, default: a}
+    default: []
+`);
+  const call = async (...args: string[]) => {
+    const r = await run([...args, "--json"], opts);
+    expect(r.code, r.stderr).toBe(0); expect(r.stderr).toBe("");
+    const result = JSON.parse(r.stdout);
+    for (const key of ["added", "removed", "files"]) expect(Array.isArray(result[key])).toBe(true);
+    return result;
+  };
+  expect((await call("add", "file:./.loadouts/catalog/testing.yml")).notes.join(" ")).toContain("missing-library");
+  await call("enable", "testing/tools", "browser");
+  await call("switch", "testing/tools/browser/runner", "b");
+  expect((await call("disable", "testing/tools", "browser")).removedChoices).toEqual(["testing/tools/browser/runner"]);
+  await call("update"); await call("harness", "add", "claude-code"); await call("remove", "testing");
+});
+
+test("each root help command group has a distinct color", async () => {
+  const help = await run(["help"], {env: {...plainEnv, FORCE_COLOR: "1"}});
+  const program = "\x1b[38;5;208mloadouts\x1b[0m";
+  expect(help.stdout.startsWith(program)).toBe(true);
+  expect(help.stdout).toContain(`Usage: ${program} <command> \x1b[2m[...flags] [...args]\x1b[0m`);
+  const groups = [...help.stdout.matchAll(/^\x1b\[(\d+)m(?:Guidance|Workflow|Diagnostics|Setup):\x1b\[0m\n((?:  [^\n]+\n)+)/gm)];
+  expect(groups).toHaveLength(4);
+  const colors = groups.map(([, color, commands]) => {
+    for (const row of commands!.trimEnd().split("\n")) expect(row.startsWith(`  \x1b[${color}m`)).toBe(true);
+    return color;
+  });
+  expect(new Set(colors).size).toBe(groups.length);
+  expect(help.stdout).toContain("\x1b[35mSetup:");
+  expect(help.stdout).toContain(`\x1b[${colors[0]}m-h, --help`);
+  const add = await run(["help", "add"], {env: {...plainEnv, FORCE_COLOR: "1"}});
+  for (const flag of ["-h", "--help"]) {
+    expect(add.stdout.split(`\x1b[${colors[0]}m${flag}\x1b[0m`)).toHaveLength(3);
+  }
+  expect(add.stdout).toContain("\x1b[36m--with\x1b[0m");
 });

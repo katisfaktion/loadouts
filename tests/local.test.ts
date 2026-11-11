@@ -29,7 +29,7 @@ test("install cleans up the obsolete rule without changing other ignore entries"
 
 test("local-only application works offline and requires explicit reapplication of edits", async () => {
   const t = tempEnv(), opts = {cwd: t.project, env: t.env};
-  await run(["setup", "--catalog", "/missing-catalog", "--harness", "claude-code"], opts);
+  await run(["global", "configure", "--catalog", "/missing-catalog", "--harness", "claude-code"], opts);
   await run(["init"], opts);
   const file = join(t.project, ".loadouts/catalog/pipeline.yml");
   writeFileSync(file, "name: pipeline\nitems: {}\nconventions: first definition\n");
@@ -88,7 +88,7 @@ test("invalid or deleted local drafts cannot silently fall back; removal still w
 
 test("changed local MCP preflight fails without modifying the applied snapshot", async () => {
   const t = tempEnv(), opts = {cwd: t.project, env: t.env};
-  await run(["setup", "--catalog", "/missing-catalog", "--harness", "claude-code"], opts);
+  await run(["global", "configure", "--catalog", "/missing-catalog", "--harness", "claude-code"], opts);
   await run(["init", "--harness", "claude-code"], opts);
   const file = join(t.project, ".loadouts/catalog/server.yml");
   writeFileSync(file, `name: server\nitems: {x: {mcp: {test: {command: ${JSON.stringify(process.execPath)}, args: [${JSON.stringify(repo + "/tests/fixtures/mcp-ok.ts")}]}}}}\n`);
@@ -116,7 +116,7 @@ test("release locks reject malformed local snapshots", async () => {
 
 test("non-skill reconciliation failures persist incomplete state until a successful retry", async () => {
   const t = tempEnv(), opts = {cwd: t.project, env: t.env};
-  await run(["setup", "--catalog", "/missing-catalog", "--harness", "claude-code"], opts);
+  await run(["global", "configure", "--catalog", "/missing-catalog", "--harness", "claude-code"], opts);
   await run(["init", "--harness", "claude-code"], opts);
   await run(["create", "draft"], opts);
   mkdirSync(join(t.project, "CLAUDE.md"));
@@ -172,7 +172,7 @@ test("create from a shared definition works before init and emits authoring grou
   const yaml = "name: workflow\nitems:\n  method:\n    kind: one_of\n    members:\n      small: {conventions: Keep it small.}\n    default: [small]\n  tools:\n    kind: any_of\n    members:\n      extra: {conventions: Optional guidance.}\n    default: []\n";
   writeFileSync(join(catalog, "loadouts/workflow.yml"), yaml);
   git(catalog, "add", "."); git(catalog, "commit", "-m", "Add normalized group fixture"); git(catalog, "tag", "v1.1.0");
-  expect((await run(["setup", "--catalog", catalog, "--harness", "codex"], opts)).code).toBe(0);
+  expect((await run(["global", "configure", "--catalog", catalog, "--harness", "codex"], opts)).code).toBe(0);
   const result = await run(["create", "custom", "--from", "workflow"], opts);
   expect(result.code, result.stderr).toBe(0);
   const file = join(t.project, ".loadouts/catalog/custom.yml");
@@ -215,7 +215,7 @@ test("a compiled release derives draft schema references from its versioned pack
 
 test("local discovery merges names and unselected local drafts can be inspected from child directories", async () => {
   const t = tempEnv(), catalog = fixtureCatalog(), opts = {cwd: t.project, env: t.env};
-  await run(["setup", "--catalog", catalog, "--harness", "claude-code"], opts);
+  await run(["global", "configure", "--catalog", catalog, "--harness", "claude-code"], opts);
   await run(["init"], opts);
   expect((await run(["create", "custom", "--from", "backend"], opts)).code).toBe(0);
   const copied = Bun.YAML.parse(readFileSync(join(t.project, ".loadouts/catalog/custom.yml"), "utf8")) as any;
@@ -262,7 +262,7 @@ test("doctor explains explicit local and shared sources and draft drift without 
 
 test("doctor checks configured-catalog collisions before a local draft is applied", async () => {
   const t = tempEnv(), catalog = fixtureCatalog(), opts = {cwd: t.project, env: t.env};
-  await run(["setup", "--catalog", catalog, "--harness", "claude-code"], opts);
+  await run(["global", "configure", "--catalog", catalog, "--harness", "claude-code"], opts);
   await run(["init"], opts); await run(["create", "backend"], opts);
   const r = await run(["doctor", "--json"], opts);
   expect(r.code).toBe(1);
@@ -292,7 +292,7 @@ test("create normalizes nested internal groups and preserves member includes", a
   const value = {name: "nested", items: {container: {conventions: "Keep parent", items: {language: {kind: "one_of", members: {python: {includes: {testing: {source: "github:acme/catalog/testing"}}, items: {extras: {kind: "any_of", members: {coverage: {}}, default: []}}}}, default: ["python"]}}}}};
   writeFileSync(join(catalog, "loadouts/nested.yml"), Bun.YAML.stringify(value));
   git(catalog, "add", "."); git(catalog, "commit", "-m", "Nested normalized fixture"); git(catalog, "tag", "v1.1.0");
-  expect((await run(["setup", "--catalog", catalog, "--harness", "codex"], opts)).code).toBe(0);
+  expect((await run(["global", "configure", "--catalog", catalog, "--harness", "codex"], opts)).code).toBe(0);
   const result = await run(["create", "custom", "--from", "nested"], opts);
   expect(result.code, result.stderr).toBe(0);
   expect(Bun.YAML.parse(readFileSync(join(t.project, ".loadouts/catalog/custom.yml"), "utf8"))).toEqual({name: "custom", items: {container: {conventions: "Keep parent", items: {language: {one_of: {python: {includes: {testing: {source: "github:acme/catalog/testing"}}, items: {extras: {any_of: {coverage: {}}, default: []}}}}, default: "python"}}}}});
@@ -306,7 +306,7 @@ test.each([
   mkdirSync(join(t.project, ".git"));
   writeFileSync(join(catalog, "loadouts/compose.yml"), yaml);
   git(catalog, "add", "."); git(catalog, "commit", "-m", "Create boundary fixture"); git(catalog, "tag", "v1.1.0");
-  expect((await run(["setup", "--catalog", catalog, "--harness", "codex"], opts)).code).toBe(0);
+  expect((await run(["global", "configure", "--catalog", catalog, "--harness", "codex"], opts)).code).toBe(0);
   const result = await run(["create", "custom", "--from", "compose"], opts);
   expect(result.code === 0, result.stderr).toBe(valid);
   expect(existsSync(join(t.project, ".loadouts/catalog/custom.yml"))).toBe(valid);

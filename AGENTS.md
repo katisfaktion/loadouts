@@ -1,12 +1,15 @@
 <!-- loadouts:begin -->
 ## Agent loadouts
 
-Managed by `loadouts` (bun-cli, github-contributions, sdlc). Change with `loadouts help`, not by editing this section.
+Managed by `loadouts` (agent-authoring, bun-cli, github-contributions, sdlc). Change with `loadouts help`, not by editing this section.
 
 ### When to use what
 
 | When | Use | Source |
 | --- | --- | --- |
+| Writing or changing agent skills | plugin `skill-creator` (Claude Code) | agent-authoring/skills |
+| Building Claude Code plugins, hooks, commands or subagents | plugin `plugin-dev` (Claude Code) | agent-authoring/plugins |
+| Auditing or revising AGENTS.md / CLAUDE.md | plugin `claude-md-management` (Claude Code) | agent-authoring/instructions |
 | Selecting bun test flags or building and cross-compiling the standalone CLI | skills `bun-development` | bun-cli/tooling |
 | Adding or changing CLI commands, options or argument parsing with Optique | skills `optique` | bun-cli/interface |
 | Drafting or revising a GitHub issue or pull request | skills `gh`; skills `unslop` | github-contributions/github, writing |

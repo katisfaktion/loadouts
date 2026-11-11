@@ -11,9 +11,9 @@ Propose a composition of small, reusable loadouts: unchanged shared entries plus
 
 Start with `loadouts help`, then read the command help for each operation you need (`loadouts help create`, `loadouts help validate`, and later `loadouts help add`). Use the installed CLI's commands, paths and flags as the authority. Do not invent commands or reproduce CLI-managed configuration by hand.
 
-Run `loadouts inspect --json` from the project. It works before setup/init, reads local metadata without running tools, and returns partial results with exit 1 when there are warnings. Preserve those warnings in your assessment.
+Run `loadouts inspect --json` from the project. It works before machine configuration or project initialization, reads local metadata without running tools, and returns partial results with exit 1 when there are warnings. Preserve those warnings in your assessment.
 
-Before external discovery, use `loadouts list` and `loadouts show <name> --json` to inspect relevant catalog entries and inspect their declared tree and recursively inspect only the selected active closure. Read active choices, loadout-level and active item-level conventions, routing and referenced candidate instructions. Record each source/ref/resolved revision and root-to-owner path where available. Catalog membership alone is not evidence of fit: rank concrete project fit, primary-source support and actual verification evidence. Reuse entries supported by that evidence; preserve failures as evidence gaps. `show` returns parsed data for inspection; it is not an authoring template to copy verbatim into YAML.
+Before external discovery, run `loadouts list --sources --json`. Inspect each relevant candidate with `loadouts show <source> --json` and follow its active includes. Read active choices, loadout-level and active item-level conventions, routing and referenced candidate instructions. Record each source/ref/resolved revision and root-to-owner path where available. Catalog membership alone is not evidence of fit: rank concrete project fit, primary-source support and actual verification evidence. Reuse entries supported by that evidence; preserve failures as evidence gaps. `show` returns parsed data for inspection; it is not an authoring template to copy verbatim into YAML.
 
 Read relevant manifests, dependencies, architecture and instruction files; search nested packages when needed. Ask about material project goals the repository cannot reveal. Inspect user-level plugins and skills alongside project declarations. Scope and enabled flags describe configuration layers, not proven effective activation or usefulness. An unknown source is a research gap, not an identifier to guess.
 
@@ -143,39 +143,6 @@ Before recommending activation, compare all proposed active selections across th
 
 ## Hand back
 
-List each recommended shared source or local file with its purpose, reuse/adapt/create decision, and upstream base for adaptations. Explain project evidence, new/omitted capabilities, source references, full active include closure and effective choices, convention/routing review findings, and unresolved user priorities. Distinguish structural validation, agent judgment and real-issue verification. Validate every draft separately. Clearly label proposals **recommended, not verified on a real issue**. Mention existing ignore rules if they hide drafts. Describe later application, real-issue use and contribution as next steps, without running them. After the user chooses to apply the composition, the commands are:
+List each recommended shared source or local file with its purpose, reuse/adapt/create decision, and upstream base for adaptations. Explain project evidence, new/omitted capabilities, source references, full active include closure and effective choices, convention/routing review findings, and unresolved user priorities. Distinguish structural validation, agent judgment and real-issue verification. Validate every draft separately. Clearly label proposals **recommended, not verified on a real issue**. Mention existing ignore rules if they hide drafts. Describe later application, real-issue use and contribution as next steps, without running them.
 
-```sh
-# Only if the project is not initialized:
-loadouts init --harness claude-code,codex
-# Select the approved shared and local sources together:
-loadouts add github:owner/repo/testing@ref file:./.loadouts/catalog/react.yml file:./.loadouts/catalog/payload.yml file:./.loadouts/catalog/cloudflare.yml
-# After later edits, or after cloning the configured project:
-loadouts install
-```
-
-Use only the user's selected harnesses and check the relevant command help first. The manifest records direct roots only; included descendants remain independently identified in the applied graph. Use `add` to select sources, `switch` for one_of choices, `enable`/`disable` for any_of choices, and `remove` to deselect; do not hand-edit loadouts.json or locks to imitate these operations. For an included-only child, edit the parent's `includes.<name>.choices` or explicitly add the same child source as a root first; direct choices still cannot override conflicting include choices. Removing a root retains descendants needed by another root. `add` writes the explicit source and applies it, so it does not need a second install immediately afterward. When a selected name changes source, show the user the old and new sources and obtain confirmation. Use `add --yes` in non-interactive execution only after that specific replacement has been approved.
-
-After approval and source selection, use the existing choice commands with slash paths (read their help first):
-
-```sh
-loadouts enable testing/languages python
-loadouts switch testing/languages/python/framework unittest
-loadouts switch frontend/framework vue
-```
-
-`add --with` also accepts nested group paths; supply parent and descendant selections together when needed. Switching or disabling a parent removes explicit descendant requests under deselected members from that same direct manifest entry and reports them; re-enabling uses defaults. Other roots and include requests remain unchanged and may conflict. Manually edited stale inactive requests remain errors. Branch changes release only unreachable managed artifacts, retaining shared artifacts still required by active members or other roots. Installs write lock format 1 with active choices and edges. Development lock formats are not supported.
-
-Replace the illustrative names and ref above with the approved, verified sources. Commit the manifest, both loadouts and skills locks, and `.loadouts/catalog/*.yml`. A same-name local draft never overrides a shared selection implicitly.
-
-## Compare and contribute after verification
-
-When the user separately asks to contribute a verified local loadout, the agent performs the comparison and prepares the PR. Use `loadouts help publish`. Read the recorded upstream base and compare the local YAML with both that base and the target catalog's current default branch in a temporary Git checkout. Use ordinary Git/file diffs; there is no `loadouts diff` command. Compare definitions semantically as well as textually so schema comments or formatting are not mistaken for capability changes. If the base is unknown, say so rather than claiming a three-way comparison.
-
-Explain local additions/removals and intervening upstream changes. Preserve upstream improvements: `publish` copies the entire local file onto the target's current default branch; it does not merge it with upstream or perform this comparison for you. Reconcile differences in the local draft with the user's approval, then validate, install and verify changed behavior before publishing. If there is no meaningful change, reuse upstream instead of opening a redundant PR. A renamed local draft proposes a differently named catalog file; it does not update the original entry.
-
-Publish local dependencies first. Check every include declaration in the YAML being published, including inactive branches, and every declaration in pinned definitions inspected for the active closure for portable GitHub sources: replace local file or machine-specific Git sources with available shared sources, then install and verify the composition before contributing it. Keep includes intact; do not inline dependencies or silently rewrite sources. Preview uses applied graph records and pinned descendant definitions in the existing local Git cache; it refuses missing cache objects without fetching or cloning and makes no GitHub calls.
-
-The preview and PR identify verified active choices: inactive targets were checked for source portability only. Do not fetch inactive targets during preview or claim they were installed or tested.
-
-For each independently useful loadout, run `loadouts publish <name> --catalog owner/repo --summary '<what was verified and why this change is reusable>'` to preview the contribution. The preview shows the proposed YAML and metadata, not an upstream diff. After explicit publication approval, run it with `--yes` to open the PR. Keep each PR focused on that loadout and report its URL. Do not merge, release, or switch the project's source automatically. The user can choose the published shared source later through `add`.
+When the user chooses to apply a proposal, read `loadouts agents apply`. When asked to contribute a verified local definition, read `loadouts agents publish`.

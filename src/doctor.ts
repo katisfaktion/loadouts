@@ -1,27 +1,54 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { readManifest, manifestMatchesLock, resolveManifest } from "./manifest";
-import { readLock, loadoutPaths } from "./lock";
+import { readLock, loadoutPaths, requireProject } from "./lock";
 import { loadedLoadouts, desired, missingArtifacts } from "./sync";
 import { scanGlobals, readJson } from "./globals";
 import { activeItems, artifactsFor, declaredItems, parseLoadout, resolveChoices } from "./loadout";
 import { localNames, readLocal } from "./local";
 import { listLoadouts, openCatalog } from "./catalog";
-import { readConfig } from "./config";
+import { readConfig, setupInstructions } from "./config";
 import { listSkills } from "./skills";
 import { checkMcp } from "./mcpcheck";
 import { codexConfigPath, codexUserHome, expandProject } from "./codex";
 
-import { home } from "./paths";
+import { CliError } from "./errors";
+import { configFile, findProject, home } from "./paths";
 
 import { packageSkillStatus } from "./package-skills";
 
 export interface Finding { kind: "global" | "conflict" | "mcp" | "auth" | "local"; message: string; fix: string }
-export async function doctor(project: string): Promise<Finding[]> {
+function checkSetup(): Finding[] {
+  let config: ReturnType<typeof readConfig>;
+  try { config = readConfig(); }
+  catch (error) {
+    if (error instanceof CliError) return [{kind: "global", message: error.message, fix: error.fix}];
+    throw error;
+  }
+  const findings: Finding[] = [];
+  for (const {file, description, update} of setupInstructions(config.harnesses)) {
+    try {
+      const text = readFileSync(file, "utf8");
+      if (text === update(text)) continue;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        findings.push({kind: "global", message: `Cannot read ${file}`, fix: "check the file and its permissions, then rerun loadouts doctor"});
+        continue;
+      }
+    }
+    findings.push({kind: "global", message: `Missing or outdated ${description} in ${file}`, fix: "loadouts global configure"});
+  }
+  return findings;
+}
+
+export async function doctor(cwd: string): Promise<Finding[]> {
+  const configured = existsSync(configFile());
+  const project = configured ? findProject(cwd) : requireProject(cwd);
+  const findings = configured ? checkSetup() : [];
+  if (!project) return findings;
   const manifest = existsSync(join(project, "loadouts.json")) ? readManifest(project) : null;
   const applied = existsSync(join(project, "loadouts.lock.json")) ? readLock(project) : null;
   const lock = applied ? applied : {harnesses: readManifest(project).harnesses, catalog: null, loadouts: {}, installed: {}} as import("./lock").Lock;
-  const findings: Finding[] = [];
   if (!applied) findings.push({kind: "local", message: "loadouts.json is declared but not installed", fix: "loadouts install"});
   else if (!manifest || !manifestMatchesLock(manifest, applied)) findings.push({kind: "local", message: "loadouts.json does not match the applied setup", fix: "loadouts install"});
   const locals = [...new Set([...localNames(project), ...Object.keys(lock.local ?? {})])];

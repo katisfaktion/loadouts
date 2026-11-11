@@ -1,4 +1,4 @@
-import { paint, withProgress } from "./output";
+import { paint, reportNote, withProgress } from "./output";
 import {existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, lstatSync, cpSync, renameSync, rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {dirname, join, resolve} from "node:path";
@@ -121,7 +121,7 @@ export async function syncCodexPlugins(project: string, lock: Lock, keys: string
             if (existsSync(to)) renameSync(to, backup);
             try { renameSync(incoming, to); } catch (error) { if (existsSync(backup)) renameSync(backup, to); throw error; }
           } finally { rmSync(staging, {recursive: true, force: true}); }
-          console.log(`${paint("cached", "green")} Codex plugin ${id}`);
+          reportNote(`${paint("cached", "green")} Codex plugin ${id}`);
         }
         lock.installed[key] = []; clear(key);
       } finally { rmSync(stage, {recursive: true, force: true}); }

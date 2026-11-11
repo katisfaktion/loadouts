@@ -2,36 +2,37 @@
 import { prune } from "./prune";
 import { launch } from "./launch";
 import { doctor } from "./doctor";
-import { projectCommand, update, install } from "./sync";
+import { printChanges, projectCommand, update, install } from "./sync";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { readConfig, parseHarnesses, setup } from "./config";
 import { readLock, requireProject } from "./lock";
 import { findProject } from "./paths";
 import { parseCommand, type ParsedCommand } from "./commands";
-import { openCatalog, listLoadouts, readLoadout } from "./catalog";
+import { openCatalog, listLoadouts, readLoadout, splitCatalogSpec } from "./catalog";
 import { CliError } from "./errors";
 import { helpText } from "./help";
-import { paint } from "./output";
+import { jsonNotes, paint } from "./output";
 import { createLocal, localNames, readLocal, ensureLocalCatalog } from "./local";
 import { parseLoadout } from "./loadout";
-import { readManifest, writeManifest, parseSource, readSourceFile } from "./manifest";
+import { readManifest, writeManifest, parseSource, catalogSource, fileSource, readSourceFile } from "./manifest";
 import { ensureGitignore } from "./codex";
 import { publish } from "./publish";
 import { inspectProject, inspectionRoot } from "./inspect";
-import explorationSkill from "../skills/loadouts-explore/SKILL.md" with {type: "text"};
+import { guides, guideIndex } from "./guides";
 
 export const COMMANDS: Record<string, { brief: string; hint?: string; summary: string; examples: string[]; run: (args: ParsedCommand) => Promise<number> }> = {
-  explore: {brief: "Explore the stack and propose reusable loadouts.",
-    summary: "Print agent guidance to reuse suitable catalog entries, search remaining gaps with npx skills find, and create focused drafts. Default to direct manifest selections; use composition YAML for reusable bundles. Review included instructions and conventions for conflicts. Does not launch an agent or install anything.",
-    examples: ["loadouts explore"],
-    run: async args => {
-      console.log(explorationSkill); return 0;
+  agents: {brief: "List workflow guides for agents.", hint: "[GUIDE]",
+    summary: "List the workflow guides. Give a guide name to read it offline as Markdown.",
+    examples: ["loadouts agents explore"],
+    run: async ({positionals: [topic]}) => {
+      console.log(topic ? guides[topic]!.body : guideIndex);
+      return 0;
     },
   },
-  validate: {brief: "Validate a loadout YAML file.", hint: "backend.yml",
-    summary: "Validate one YAML file offline, including include entry shape and local routing references, without initializing or installing. Does not fetch descendants, resolve graph conflicts or certify semantic compatibility.",
-    examples: ["loadouts validate .loadouts/catalog/backend.yml"],
+  validate: {brief: "Validate a loadout YAML file.", hint: "FILE",
+    summary: "Check a loadout YAML file before installing it. This offline check covers the file itself, including its routing and include declarations.",
+    examples: ["loadouts validate .loadouts/catalog/testing.yml"],
     run: async args => {
       const {positionals} = args;
       const file = positionals[0]!;
@@ -41,9 +42,9 @@ export const COMMANDS: Record<string, { brief: string; hint?: string; summary: s
       console.log(`${paint("Valid loadout:", "green")} ${parseLoadout(yaml, basename(file)).name}`); return 0;
     },
   },
-  inspect: {brief: "Inventory project and user agent setups.",
-    summary: "Read project and user agent setup metadata without running tools or changing files.",
-    examples: ["loadouts inspect", "loadouts inspect --json"],
+  inspect: {brief: "List tools and instructions in project and user settings.",
+    summary: "Read project and user settings without starting any tools. Works before project setup. Returns exit code 1 if the inventory has warnings.",
+    examples: ["loadouts inspect --json"],
     run: async args => {
       const {values} = args;
       const report = inspectProject(process.cwd());
@@ -59,17 +60,8 @@ export const COMMANDS: Record<string, { brief: string; hint?: string; summary: s
       return report.warnings.length ? 1 : 0;
     },
   },
-  setup: {brief: "Set machine defaults and agent help references.",
-    summary: "Set machine defaults and reference LOADOUTS.md in global agent instructions.", examples: ["loadouts setup --catalog katisfaktion/agent-loadouts --harness claude-code,codex"],
-    run: async args => {
-      const {values} = args;
-      const defaults = values.catalog && values.harness ? undefined : readConfig();
-      const files = setup({catalog: values.catalog ?? defaults!.catalog, harnesses: values.harness ? parseHarnesses(values.harness) : defaults!.harnesses});
-      console.log(files.length ? files.map(f => `${paint("wrote", "green")} ${f}`).join("\n") : paint("Nothing changed.", "dim")); return 0;
-    },
-  },
-  init: {brief: "Initialize the project manifest and local catalog.",
-    summary: "Create loadouts.json and the local catalog; no components are installed.", examples: ["loadouts init --harness codex"],
+  init: {brief: "Create the project manifest and local catalog.",
+    summary: "Create loadouts.json and .loadouts/catalog/ in the current directory. Use loadouts add to install your first loadout.", examples: ["loadouts init --harness codex"],
     run: async args => {
       const {values} = args;
       const project = process.cwd();
@@ -84,55 +76,60 @@ export const COMMANDS: Record<string, { brief: string; hint?: string; summary: s
       console.log(files.length ? files.map(f => `${paint("wrote", "green")} ${f}`).join("\n") : paint("Nothing changed.", "dim")); return 0;
     },
   },
-  install: {brief: "Install declared loadouts and restore missing setup.",
-    summary: "Resolve direct selections and their active include closure, apply reachable local edits, and restore missing skills from skills-lock.json with frozen hashes. New skills locks use v2. Existing v1 locks retain their format. Loadouts selects the pinned installer automatically. Includes map actual names to {source, choices?}; use full explicit sources and group-path-to-member arrays. Member includes activate only with their containing branch. Different sources or explicit choices for the same name conflict; include order provides no overrides. Plugin versions remain best effort.",
-    examples: ["loadouts install"],
-    run: async args => { await install(requireProject(process.cwd())); return 0; },
+  install: {brief: "Install the loadouts listed in loadouts.json.",
+    summary: "Apply loadouts.json and local YAML edits. Restore missing tools from loadouts.lock.json and skills-lock.json. To refresh upstream versions, use loadouts update. For checkout instructions, see loadouts agents apply.",
+    examples: ["loadouts install --json"],
+    run: async args => { printChanges(await install(requireProject(process.cwd()))); return 0; },
   },
-  create: {brief: "Create a local loadout draft.", hint: "backend",
-    summary: "Create a local draft in .loadouts/catalog/ with the CLI release's schema reference, without selecting or installing it. Works before init at the nearest project or Git root (otherwise the current directory). Existing drafts are never overwritten.",
-    examples: ["loadouts create pipeline", "loadouts create backend --from backend"],
+  create: {brief: "Create a local loadout draft.", hint: "NAME",
+    summary: "Write a new YAML file in .loadouts/catalog/. Run loadouts add with the file source to use the draft in this project.",
+    examples: ["loadouts create testing", "loadouts create team-testing --from testing"],
     run: async args => {
       const {values, positionals} = args;
       console.log(`${paint("wrote", "green")} ${await createLocal(inspectionRoot(process.cwd()), positionals[0]!, values.from)}`); return 0;
     },
   },
-  publish: {brief: "Preview a catalog contribution; --yes opens a PR.", hint: "backend",
-    summary: "Preview an applied, verified local loadout contribution, including an included-only local node. Every include declaration in the chosen YAML and inspected active closure, including dormant branches, must use portable GitHub sources. Publish local dependencies first, update their sources, install and verify the selected composition. Offline preview checks active pinned descendants in the existing Git cache and refuses missing cache objects without fetching. Inactive targets receive source portability checks only; they are not fetched or tested. Copies only the chosen YAML, preserving includes; --yes pushes a branch and opens a PR.",
-    examples: ["loadouts publish pipeline --summary 'Verified in my data project'", "loadouts publish pipeline --summary 'Verified in my data project' --yes"],
+  publish: {brief: "Preview or open a catalog pull request.", hint: "NAME",
+    summary: "Preview the YAML and PR description for an applied local loadout. For the catalog review workflow, see loadouts agents publish.",
+    examples: ["loadouts publish testing --summary 'Verified with the browser test suite'"],
     run: async args => {
       const {values, positionals} = args;
       console.log(await publish(requireProject(process.cwd()), positionals[0]!, {summary: values.summary ?? "", catalog: values.catalog, yes: values.yes})); return 0;
     },
   },
-  status: {brief: "Show sources, selections and installation state.",
-    summary: "Show direct roots, included descendants and their parent edges, declared sources, applied selections and whether installation is needed.", examples: ["loadouts status --json"],
+  status: {brief: "Show project loadouts, their sources and installation state.",
+    summary: "Show the loadouts in loadouts.json, the loadouts they include, their active choices and whether you need to run install.", examples: ["loadouts status --json"],
     run: args => projectCommand("status", args),
   },
-  remove: {brief: "Remove a declared loadout and its setup.", hint: "frontend", summary: "Remove a direct selection, retaining descendants still required by another root. Included-only nodes must be removed through their parents.", examples: ["loadouts remove frontend"], run: args => projectCommand("remove", args) },
-  switch: {brief: "Choose a one_of alternative.", hint: "LOADOUT/PATH ALTERNATIVE", summary: "Choose a one_of alternative on a direct selection using its slash-separated group path. Enable containing ancestors first. Switching removes explicit descendant requests under deselected members from this direct entry and reports them; re-enabling uses defaults. For an included-only node, edit the declaring member's includes.<name>.choices or add the same source directly first. Direct choices cannot override conflicting include choices.", examples: ["loadouts switch base/methodology agent-skills", "loadouts switch testing/languages/python/framework unittest", "loadouts switch frontend/framework vue"], run: args => projectCommand("switch", args) },
-  enable: {brief: "Enable an any_of member.", hint: "LOADOUT/PATH MEMBER", summary: "Enable an any_of member on a direct selection using its slash-separated group path. Enable containing ancestors first; a child request never enables them implicitly. For an included-only node, edit the declaring member's includes.<name>.choices or add the same source directly first. Direct choices cannot override conflicting include choices.", examples: ["loadouts enable backend/runtime go", "loadouts enable testing/languages python", "loadouts enable testing/languages/python/extras coverage"], run: args => projectCommand("enable", args) },
-  disable: {brief: "Disable an any_of member.", hint: "LOADOUT/PATH MEMBER", summary: "Disable an any_of member on a direct selection using its slash-separated group path. Disabling a parent removes and reports explicit descendant requests under its deselected member from this direct entry; re-enabling uses defaults. For an included-only node, edit the declaring member's includes.<name>.choices or add the same source directly first. Direct choices cannot override conflicting include choices.", examples: ["loadouts disable backend/runtime go", "loadouts disable testing/languages python", "loadouts disable testing/languages/python/extras coverage"], run: args => projectCommand("disable", args) },
-  harness: {brief: "Add or remove a project harness.", hint: "add codex", summary: "Change project harnesses.", examples: ["loadouts harness add codex"], run: args => projectCommand("harness", args) },
+  remove: {brief: "Remove a loadout from loadouts.json and clean up its project setup.", hint: "NAME", summary: "Remove the named entry from loadouts.json and clean up the project tools and instructions it alone provided. Other loadouts keep the tools they still need. The catalog YAML stays available for reuse.", examples: ["loadouts remove testing"], run: args => projectCommand("remove", args) },
+  switch: {brief: "Switch to another choice in a group.", hint: "LOADOUT/PATH ALTERNATIVE", summary: "Select one alternative in an active one_of group and apply it. Switching clears explicit choices under the previous alternative.", examples: ["loadouts switch testing/languages/python/framework pytest"], run: args => projectCommand("switch", args) },
+  enable: {brief: "Enable an optional choice.", hint: "LOADOUT/PATH MEMBER", summary: "Add a member to an active any_of group and apply the change. For nested groups, select the parent first.", examples: ["loadouts enable testing/languages python"], run: args => projectCommand("enable", args) },
+  disable: {brief: "Disable an optional choice.", hint: "LOADOUT/PATH MEMBER", summary: "Remove a member from an active any_of group and apply the change. This also clears explicit choices nested under that member.", examples: ["loadouts disable testing/languages python"], run: args => projectCommand("disable", args) },
+  harness: {brief: "Add or remove a project harness.", hint: "add|remove HARNESS", summary: "Select or remove claude-code or codex for this project and apply the change immediately. Removing a harness preserves tools another harness uses.", examples: ["loadouts harness remove claude-code --json"], run: args => projectCommand("harness", args) },
   update: {brief: "Refresh shared sources and selected skill contents.",
-    summary: "Refresh shared resolutions throughout the include closure within declared refs and selected skill contents/hashes, keeping choices and applied local snapshots. Review and commit skills-lock.json; use install to apply local edits.", examples: ["loadouts update"],
-    run: async args => { await update(requireProject(process.cwd())); return 0; },
+    summary: "Refresh shared loadouts within their declared refs and record current skill hashes. Use loadouts install to apply edits to local YAML.", examples: ["loadouts update --json"],
+    run: async args => { printChanges(await update(requireProject(process.cwd()))); return 0; },
   },
   doctor: {brief: "Check setup and explain how to fix problems.",
-    summary: "Check manifest drift, local/shared name collisions, effective inherited conflicts, missing artifacts and MCP reachability without applying changes.", examples: ["loadouts doctor --json"],
+    summary: "Check machine configuration and report fixes. Inside a project, also check selected tools and MCP reachability. These checks can start MCP servers.", examples: ["loadouts doctor --json"],
     run: async args => {
       const {values} = args;
-      const findings = await doctor(requireProject(process.cwd()));
+      const findings = await doctor(process.cwd());
       console.log(values.json ? JSON.stringify({findings}, null, 2) : findings.length ? findings.map(f => `${paint("warning:", "yellow")} ${f.message}\n  ${paint("fix:", "cyan")} ${f.fix}`).join("\n\n") : paint("No problems found.", "green"));
       return findings.length ? 1 : 0;
     },
   },
-  claude: {brief: "Check setup, then start Claude Code.", hint: "[args...]",summary: "Check installation, then start Claude Code with normal configuration inheritance.", examples: ["loadouts claude -p 'Review this project'"], run: args => launch("claude", requireProject(process.cwd()), args.positionals)},
-  codex: {brief: "Check setup, then start Codex.", hint: "[args...]",summary: "Check installation, then start Codex with normal configuration inheritance.", examples: ["loadouts codex"], run: args => launch("codex", requireProject(process.cwd()), args.positionals)},
-  global: {brief: "Preview or disable global leftovers.", hint: "prune",
-    summary: "Preview or disable global leftovers.", examples: ["loadouts global prune", "loadouts global prune --yes"],
-    run: async args => {
-      const {values} = args;
+  claude: {brief: "Check setup, then start Claude Code.", hint: "[args...]",summary: "Run a read-only setup check, then start Claude Code with its usual project and user settings. Run loadouts install if the setup needs repair.", examples: ["loadouts claude -p 'Review this project'"], run: args => launch("claude", requireProject(process.cwd()), args.positionals)},
+  codex: {brief: "Check setup, then start Codex.", hint: "[args...]",summary: "Run a read-only setup check, then start Codex with its usual project and user settings. Run loadouts install if the setup needs repair.", examples: ["loadouts codex"], run: args => launch("codex", requireProject(process.cwd()), args.positionals)},
+  global: {brief: "Configure machine defaults or prune global tools.", hint: "configure|prune",
+    summary: "Use configure to set defaults for this machine. Use prune to preview which global tools would be disabled.",
+    examples: ["loadouts global configure --catalog katisfaktion/agent-loadouts --harness claude-code,codex", "loadouts global prune"],
+    run: async ({positionals: [action], values}) => {
+      if (action === "configure") {
+        const defaults = values.catalog && values.harness ? undefined : readConfig();
+        const files = setup({catalog: values.catalog ?? defaults!.catalog, harnesses: values.harness ? parseHarnesses(values.harness) : defaults!.harnesses});
+        console.log(files.length ? files.map(f => `${paint("wrote", "green")} ${f}`).join("\n") : paint("Nothing changed.", "dim")); return 0;
+      }
       const changes = await prune(values.yes ?? false);
       console.log(paint("These changes affect all projects:", "yellow"));
       console.log(changes.map(change => paint(change, "yellow")).join("\n") || paint("Nothing changed.", "dim"));
@@ -141,21 +138,21 @@ export const COMMANDS: Record<string, { brief: string; hint?: string; summary: s
     },
   },
   list: {brief: "List local and shared loadouts.",
-    summary: "List available loadouts.", examples: ["loadouts list --json"],
+    summary: "List names from the project and shared catalogs. Use --sources to see each source when names overlap.", examples: ["loadouts list --sources --json"],
     run: args => catalogCommand("list", args),
   },
-  show: {brief: "Show a loadout definition and its source.", hint: "backend",
-    summary: "Show the full declared tree of items, nested groups, defaults, conditional includes and routing. Installed descendants follow their pinned source.", examples: ["loadouts show base --json"],
+  show: {brief: "Show a loadout definition and its source.", hint: "NAME-OR-SOURCE",
+    summary: "Read a loadout's definition, choices and source. Pass a source from loadouts list --sources to inspect a specific local or catalog entry.", examples: ["loadouts show sdlc --json"],
     run: args => catalogCommand("show", args),
   },
   help: {brief: "Show command usage, flags and examples.", hint: "[command]",
-    summary: "Show usage and examples.",
-    examples: ["loadouts help add"],
-    run: async args => { console.log(helpText(args.positionals[0])); return 0; },
+    summary: "List commands by task, or give a command name to see its usage and flags.",
+    examples: ["loadouts help add", "loadouts help global configure"],
+    run: async args => { console.log(helpText(args.positionals[0], args.positionals[1])); return 0; },
   },
-  add: {brief: "Declare and install loadouts.", hint: "base frontend",
-    summary: "Declare direct roots and apply their active include closure. Encode nested requests with --with LOADOUT/PATH=MEMBER[,MEMBER], repeating the option for other groups. All requests are validated together; select ancestors explicitly and omit literal items/one_of/any_of from paths. An empty value clears an any_of group. Inactive requests fail instead of being discarded. Explicit choices must agree across roots and include edges; they never override one another. New bare names use the shared catalog; an existing name keeps its selected source. Replacing a selected source shows the old and new sources and asks for confirmation (default: no). Use --yes to approve replacements in scripts. Local files never implicitly override shared definitions.",
-    examples: ["loadouts add base frontend backend", "loadouts add file:./.loadouts/catalog/backend.yml", "loadouts add github:katisfaktion/agent-loadouts/backend@v0.1.0", "loadouts add testing --with testing/languages=python --with testing/languages/python/framework=unittest"],
+  add: {brief: "Add loadouts to loadouts.json and install them.", hint: "SOURCE...",
+    summary: "Save each loadout's source in loadouts.json and install it for this project. With a name alone, add uses the source already in loadouts.json or looks up a new name in the shared catalog. Replacing a source requires confirmation. With --json, check stderr for confirmation_required.",
+    examples: ["loadouts add sdlc", "loadouts add file:./.loadouts/catalog/testing.yml --with testing/languages=python"],
     run: args => projectCommand("add", args),
   },
 };
@@ -166,11 +163,14 @@ async function catalogCommand(command: "list" | "show", args: ParsedCommand): Pr
   const project = findProject(process.cwd());
   const lock = project && existsSync(join(project, "loadouts.lock.json")) ? readLock(project) : null;
   const locked = lock?.catalog ?? null;
-  const locals = project && !values.catalog ? localNames(project) : [];
-  if (command === "show" && project && !values.catalog) {
-    const name = positionals[0]!;
-    const declared = existsSync(join(project, "loadouts.json")) ? readManifest(project).loadouts : {};
-    const selected = Object.hasOwn(declared, name) ? declared[name] : lock?.resolved?.[name];
+  const root = project ?? inspectionRoot(process.cwd());
+  const input = positionals[0];
+  const explicit = input?.includes(":") ? parseSource(input) : undefined;
+  if (explicit && values.catalog) throw new CliError("an explicit source already identifies its catalog", 2, "omit --catalog when passing a full source");
+  if (command === "show" && (project || explicit) && !values.catalog) {
+    const name = explicit?.name ?? input!;
+    const declared = !explicit && project && existsSync(join(project, "loadouts.json")) ? readManifest(project).loadouts : {};
+    const selected = explicit ? {source: input!} : Object.hasOwn(declared, name) ? declared[name] : lock?.resolved?.[name];
     if (selected) {
       const parsed = parseSource(selected.source);
       if (parsed.kind === "catalog") {
@@ -178,35 +178,57 @@ async function catalogCommand(command: "list" | "show", args: ParsedCommand): Pr
         const catalog = pinned?.source === selected.source ? pinned.catalog! : await openCatalog(parsed.repo, parsed.ref);
         console.log(JSON.stringify({...await readLoadout(catalog, name), source: {kind: "catalog", ...catalog}}, null, 2)); return 0;
       }
-      console.log(JSON.stringify({...parseLoadout(readSourceFile(project, selected.source), name + ".yml"), source: {kind: "local", path: parsed.path}}, null, 2)); return 0;
+      console.log(JSON.stringify({...parseLoadout(readSourceFile(root, selected.source), name + ".yml"), source: {kind: "local", path: parsed.path}}, null, 2)); return 0;
     }
-    const yaml = readLocal(project, positionals[0]!);
+    const yaml = readLocal(root, positionals[0]!);
     if (yaml !== null) {
       console.log(JSON.stringify({...parseLoadout(yaml, positionals[0] + ".yml"), source: {kind: "local", path: `.loadouts/catalog/${positionals[0]}.yml`}}, null, 2)); return 0;
     }
     if (Object.hasOwn(lock?.local ?? {}, positionals[0]!)) throw new CliError(`local definition .loadouts/catalog/${positionals[0]}.yml is missing`, 1, `restore .loadouts/catalog/${positionals[0]}.yml or remove the local selection with loadouts remove ${positionals[0]}`);
   }
-  const catalog = values.catalog ? await openCatalog(values.catalog) : locked ?? await openCatalog(readConfig().catalog);
-  const shared = command === "list" ? await listLoadouts(catalog) : [];
-  const result = command === "list" ? [...new Set([...locals, ...shared])].sort() : {...await readLoadout(catalog, positionals[0]!), source: {kind: "catalog", ...catalog}};
-  console.log(values.json || command === "show" ? JSON.stringify(result, null, 2) : (result as string[]).map(name => `${paint(name, "blue")} (${locals.includes(name) ? shared.includes(name) ? "local + catalog; choose an explicit source" : "local" : "catalog"})`).join("\n"));
+  const catalog = values.catalog ? await openCatalog(...splitCatalogSpec(values.catalog)) : locked ?? await openCatalog(readConfig().catalog);
+  if (command === "show") {
+    console.log(JSON.stringify({...await readLoadout(catalog, input!), source: {kind: "catalog", ...catalog}}, null, 2));
+    return 0;
+  }
+  const shared = await listLoadouts(catalog);
+  const locals = !values.catalog && (project || values.sources) ? localNames(root) : [];
+  const names = [...new Set([...locals, ...shared])].sort();
+  if (values.sources) {
+    const candidates = names.flatMap(name => [
+      ...(locals.includes(name) ? [{name, kind: "local", source: fileSource(name)}] : []),
+      ...(shared.includes(name) ? [{name, kind: "catalog", source: catalogSource(catalog.repo, name, catalog.ref)}] : []),
+    ]);
+    console.log(values.json ? JSON.stringify(candidates, null, 2) : candidates.map(item => item.source).join("\n"));
+  } else {
+    console.log(values.json ? JSON.stringify(names, null, 2) : names.map(name => `${paint(name, "blue")} (${locals.includes(name) ? shared.includes(name) ? "local + catalog; choose an explicit source" : "local" : "catalog"})`).join("\n"));
+  }
   return 0;
 }
 
 export async function main(argv: string[]): Promise<number> {
+  if (argv.length === 1 && (argv[0] === "--help" || argv[0] === "-h")) argv = ["help"];
+  const [name = "help", ...args] = argv;
+  const forwarded = name === "claude" || name === "codex";
+  const flags = forwarded ? [] : args.slice(0, args.includes("--") ? args.indexOf("--") : undefined);
+  const json = flags.includes("--json");
+  const notes: string[] = [];
   try {
-    if (argv.length === 1 && (argv[0] === "--help" || argv[0] === "-h")) argv = ["help"];
-    const [name = "help", ...args] = argv;
     const command = COMMANDS[name];
+    if (name === "setup") throw new CliError("setup has moved", 2, "run loadouts global configure");
     if (!Object.hasOwn(COMMANDS, name)) throw new CliError(`unknown command "${name}"`, 2);
-    if (name !== "claude" && name !== "codex" && (args.slice(0, args.includes("--") ? args.indexOf("--") : undefined).some(arg => arg === "--help" || arg === "-h"))) {
-      console.log(helpText(name));
+    if (flags.some(arg => arg === "--help" || arg === "-h")) {
+      console.log(helpText(name, name === "global" && args[0] && !args[0].startsWith("-") ? args[0] : undefined));
       return 0;
     }
-    return await command.run(parseCommand(argv));
+    const parsed = parseCommand(argv);
+    return await (parsed.values.json ? jsonNotes.run(notes, () => command.run(parsed)) : command.run(parsed));
   } catch (error) {
     const e = error instanceof CliError ? error : new CliError(error instanceof Error ? error.message : String(error), 1);
-    await Bun.write(Bun.stderr, `${paint("error:", "red", "stderr")} ${e.message}\n${paint("fix:", "cyan", "stderr")} ${e.fix}\n`);
+    if (json) {
+      const detail = {code: e.id, message: e.message, fix: e.fix, ...(e.replacements ? {replacements: e.replacements} : {})};
+      await Bun.write(Bun.stderr, JSON.stringify({error: detail, ...(notes.length ? {notes} : {})}) + "\n");
+    } else await Bun.write(Bun.stderr, `${paint("error:", "red", "stderr")} ${e.message}\n${paint("fix:", "cyan", "stderr")} ${e.fix}\n`);
     return e.code;
   }
 }

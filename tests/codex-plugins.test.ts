@@ -125,7 +125,7 @@ test("missing Codex executable does not claim successful installation", async ()
 
 test("doctor and inspection use native Codex project declarations", async () => {
   const t = await setup(`choice: {one_of: {a: ${plugin("first")}, b: ${plugin("second")}}, default: b}`);
-  expect((await run(["setup", "--catalog", fixtureCatalog(), "--harness", "claude-code,codex"], t.opts)).code).toBe(0);
+  expect((await run(["global", "configure", "--catalog", fixtureCatalog(), "--harness", "claude-code,codex"], t.opts)).code).toBe(0);
   expect((await run(add, t.opts)).code).toBe(0);
   writeFileSync(t.file, readFileSync(t.file, "utf8").replace('"enabled" = true', '"enabled" = false') + '[plugins."first@team"]\nenabled=true\n');
   const r = await run(["doctor", "--json"], t.opts); expect(r.code).toBe(1); const findings = JSON.parse(r.stdout).findings;

@@ -11,7 +11,7 @@ async function setup() {
   const log = join(t.home, "gh.log"), env = {...t.env, PATH: `${bin}:${process.env.PATH}`, FAKE_GH_LOG: log, FAKE_GH_REMOTE: remote, FAKE_GH_FORK: fork,
     GIT_AUTHOR_NAME: "Test", GIT_AUTHOR_EMAIL: "test@example.invalid", GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "test@example.invalid"};
   const opts = {cwd: t.project, env};
-  await run(["setup", "--catalog", catalog, "--harness", "claude-code"], opts);
+  await run(["global", "configure", "--catalog", catalog, "--harness", "claude-code"], opts);
   await run(["init"], opts); await run(["create", "pipeline"], opts);
   writeFileSync(join(t.project, ".loadouts/catalog/pipeline.yml"), "name: pipeline\nitems: {runtime: {skills: [acme/bun-skills]}}\nconventions: Verified project setup.\n");
   expect((await run(["add", "file:./.loadouts/catalog/pipeline.yml"], opts)).code).toBe(0);

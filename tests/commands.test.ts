@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 import { parseCommand } from "../src/commands";
 
 test.each([
-  ["explore"], ["validate", "draft.yml"], ["inspect", "--json"],
-  ["setup", "--catalog", "acme/catalog", "--harness", "codex"], ["init"], ["install"],
+  ["agents", "explore"], ["validate", "draft.yml"], ["inspect", "--json"],
+  ["global", "configure", "--catalog", "acme/catalog", "--harness", "codex"], ["init"], ["install"],
   ["create", "backend", "--from", "base"], ["publish", "base", "--summary", "Verified", "--yes"],
   ["status"], ["remove", "base"], ["switch", "base/runtime", "bun"],
   ["enable", "base/runtime", "bun"], ["disable", "base/runtime", "bun"],
@@ -13,7 +13,7 @@ test.each([
 ])("parses %j", (...args) => { expect(parseCommand(args).name).toBe(args[0]); });
 
 test.each([
-  ["install", "extra"], ["explore", "extra"], ["setup", "extra"], ["validate"],
+  ["install", "extra"], ["agents", "explore", "extra"], ["global", "configure", "extra"], ["validate"],
   ["validate", "one", "two"], ["add"], ["switch", "base/runtime"], ["harness", "oops", "codex"],
   ["global", "oops"], ["doctor", "--unknown"], ["help", "add", "extra"], ["create", "base", "--from"],
 ])("rejects invalid arguments %j with usage error", (...args) => {
@@ -33,18 +33,18 @@ test.each(["claude", "codex"])("%s forwards all arguments unchanged", name => {
 });
 
 test.each([
-  ["setup", "--catalog", "--unknown", "--harness", "codex"],
+  ["global", "configure", "--catalog", "--unknown", "--harness", "codex"],
   ["init", "--harness", "--unknown"], ["create", "demo", "--from", "--unknown"],
   ["publish", "demo", "--summary", "--unknown"], ["add", "demo", "--with", "--unknown"],
-  ["setup", "--catalog", "--"],
+  ["global", "configure", "--catalog", "--"],
 ])("option-looking tokens cannot become implicit string values: %j", (...args) => {
   expect(() => parseCommand(args)).toThrow();
 });
 
 test("explicit dash-prefixed values, repeated overrides and global option order retain compatibility", () => {
-  expect(parseCommand(["setup", "--catalog=--custom"]).values.catalog).toBe("--custom");
+  expect(parseCommand(["global", "configure", "--catalog=--custom"]).values.catalog).toBe("--custom");
   expect(parseCommand(["publish", "demo", "--summary=-text"]).values.summary).toBe("-text");
   expect(parseCommand(["status", "--json", "--json"]).values.json).toBe(true);
-  expect(parseCommand(["setup", "--catalog", "first", "--catalog", "second"]).values.catalog).toBe("second");
+  expect(parseCommand(["global", "configure", "--catalog", "first", "--catalog", "second"]).values.catalog).toBe("second");
   expect(parseCommand(["global", "--yes", "prune"])).toMatchObject({name: "global", positionals: ["prune"], values: {yes: true}});
 });
