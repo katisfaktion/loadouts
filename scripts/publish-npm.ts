@@ -3,8 +3,8 @@ import { join } from "node:path";
 
 const out = join(process.cwd(), "dist/npm");
 const manifest = JSON.parse(readFileSync(join(out, "loadouts/package.json"), "utf8"));
-// Publish the CLI last so every optional binary is available when users install it.
-for (const name of [...Object.keys(manifest.optionalDependencies), manifest.name]) {
+// Publish both launchers last so every optional binary is available when users install it.
+for (const name of [...Object.keys(manifest.optionalDependencies), manifest.name, "agent-loadouts"]) {
   const result = Bun.spawnSync(["npm", "view", `${name}@${manifest.version}`, "version", "--json"]);
   const output = result.stdout.toString();
   if (result.exitCode === 0) {

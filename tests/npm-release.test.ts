@@ -27,6 +27,8 @@ test("npm packages pair an exact release with only the matching native binary", 
   const t = prepare(), dir = join(t.project, "dist/npm");
   const manifest = JSON.parse(readFileSync(join(dir, "loadouts/package.json"), "utf8"));
   expect(manifest.name).toBe("@katisfaktion/loadouts");
+  const alias = JSON.parse(readFileSync(join(dir, "agent-loadouts/package.json"), "utf8"));
+  expect(alias).toEqual({...manifest, name: "agent-loadouts"});
   expect(manifest.version).toBe("1.2.3");
   expect(manifest.keywords).toEqual(expect.arrayContaining(["claude-code", "openai-codex", "agent-skills", "mcp"]));
   expect(manifest.author.name).toBe("katisfaktion");
@@ -64,7 +66,7 @@ test("Node launcher preserves arguments, exit status and reports a missing platf
   expect(missing.stderr.toString()).toContain("optional dependencies");
 });
 
-test("packed npm tarballs install offline and run without Bun or install scripts", () => {
+test.each(["loadouts", "agent-loadouts"])("packed %s tarball installs offline and runs without Bun or install scripts", launcher => {
   const t = prepare(), dir = join(t.project, "dist/npm"), bin = join(t.home, "bin");
   mkdirSync(bin);
   symlinkSync(Bun.which("node")!, join(bin, "node"));
@@ -78,7 +80,7 @@ test("packed npm tarballs install offline and run without Bun or install scripts
     expect(result.exitCode, result.stderr.toString()).toBe(0);
     return result.stdout.toString();
   };
-  const packages = [`loadouts-${process.platform}-${process.arch}`, "loadouts"].map(name => {
+  const packages = [`loadouts-${process.platform}-${process.arch}`, launcher].map(name => {
     const cwd = join(dir, name);
     const [packed] = JSON.parse(npm(["pack", "--ignore-scripts", "--json"], cwd));
     expect(packed.files.map((file: any) => file.path)).toContain("LICENSE");
@@ -93,6 +95,11 @@ test("packed npm tarballs install offline and run without Bun or install scripts
   const result = Bun.spawnSync([join(consumer, "node_modules/.bin/loadouts"), "a b"], { cwd: consumer, env });
   expect(result.exitCode).toBe(7);
   expect(result.stdout.toString()).toBe("a b\n");
+  if (launcher === "agent-loadouts") {
+    const exec = Bun.spawnSync([Bun.which("npm")!, "exec", "--offline", "--", "agent-loadouts", "a b"], { cwd: consumer, env });
+    expect(exec.exitCode, exec.stderr.toString()).toBe(7);
+    expect(exec.stdout.toString()).toBe("a b\n");
+  }
 }, 20_000);
 
 test.each(["fresh", "partial", "registry-error", "publish-error"])("npm publishing handles %s without contacting npm", mode => {
@@ -122,8 +129,8 @@ if (args[0] === 'publish' && process.env.TEST_MODE === 'publish-error') process.
     expect(published.some(args => args[1].endsWith("/loadouts"))).toBe(false);
   } else {
     expect(result.exitCode, result.stderr.toString()).toBe(0);
-    expect(published).toHaveLength(mode === "partial" ? 5 : 6);
-    expect(published.at(-1)[1]).toBe(join(t.project, "dist/npm/loadouts"));
+    expect(published).toHaveLength(mode === "partial" ? 6 : 7);
+    expect(published.slice(-2).map(args => args[1])).toEqual(["loadouts", "agent-loadouts"].map(name => join(t.project, "dist/npm", name)));
     expect(published.every(args => args.includes("--access") && args.includes("public") && args.includes("--provenance"))).toBe(true);
   }
 });
