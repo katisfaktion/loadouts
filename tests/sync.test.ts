@@ -25,7 +25,7 @@ test("add generates all harness files and is idempotent", async () => {
   expect(JSON.parse(t.text(".mcp.json")).mcpServers.shadcn).toBeDefined();
   expect((Bun.TOML.parse(t.text(".codex/config.toml")) as any).mcp_servers.shadcn).toBeDefined();
   expect(t.text("AGENTS.md")).toContain("<!-- loadouts:begin -->");
-  expect(t.text("CLAUDE.md")).toContain("@AGENTS.md"); expect(t.text(".gitignore")).toContain(".loadouts/");
+  expect(t.text("CLAUDE.md")).toContain("@AGENTS.md"); expect(existsSync(join(t.project, ".gitignore"))).toBe(false);
   const mtime = statSync(join(t.project, "loadouts.lock.json")).mtimeMs;
   const r = await run(["add", "base", "frontend", "backend", "--catalog", t.catalog], t.opts);
   expect(r.code).toBe(0); expect(r.stdout.trim()).toBe("Nothing changed.");

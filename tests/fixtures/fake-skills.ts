@@ -8,7 +8,8 @@ const store = join(root, ".agents/skills");
 const agent = args[args.indexOf("-a") + 1] ?? "codex";
 const catalog = JSON.parse(process.env.FAKE_SKILLS ?? "{}");
 const lockFile = join(root, "skills-lock.json");
-const lock = existsSync(lockFile) ? JSON.parse(readFileSync(lockFile, "utf8")) : {version: 1, skills: {}};
+const version = Number(process.env.FAKE_SKILLS_LOCK_VERSION ?? 2);
+const lock = existsSync(lockFile) ? JSON.parse(readFileSync(lockFile, "utf8")) : {version, skills: {}};
 lock.skills = Object.assign(Object.create(null), lock.skills);
 const content = (name: string) => `# ${name}\n${process.env.FAKE_SKILLS_CONTENT ?? ""}`;
 const hash = (name: string) => createHash("sha256").update("SKILL.md").update(content(name)).digest("hex");
@@ -23,7 +24,7 @@ if (command === "find") {
     if (!failed) {
       const dir = join(store, name); mkdirSync(dir, {recursive: true});
       writeFileSync(join(dir, "SKILL.md"), content(name)); writeFileSync(join(dir, ".source"), repo);
-      lock.skills[name] = {source: repo, sourceType: "github", skillPath: `skills/${name}/SKILL.md`, computedHash: hash(name)};
+      lock.skills[name] = {source: version === 2 ? repo.toLowerCase() : repo, sourceType: "github", skillPath: `skills/${name}/SKILL.md`, computedHash: hash(name)};
       const agentsFile = join(dir, ".agents"), agents: string[] = existsSync(agentsFile) ? JSON.parse(readFileSync(agentsFile, "utf8")) : [];
       writeFileSync(agentsFile, JSON.stringify([...new Set([...agents, agent])]));
       if (agent === "claude-code") {
@@ -60,6 +61,7 @@ if (command === "find") {
   }
   saveLock();
 } else if (command === "experimental_install") {
+  if (lock.version !== version) { console.error("frozen lock uses a different hash format"); process.exit(1); }
   if (!args.includes("--frozen-lockfile")) { console.error("expected frozen restore"); process.exit(2); }
   for (const [name, entry] of Object.entries(lock.skills) as [string, any][]) {
     if (existsSync(join(store, name, "SKILL.md"))) continue;

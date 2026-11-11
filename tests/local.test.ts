@@ -4,18 +4,27 @@ import { join } from "node:path";
 import { tempEnv, fixtureCatalog, run, git, repo } from "./helpers";
 import { version } from "../package.json";
 
-test("init exposes tracked local YAML and keeps generated Codex state ignored", async () => {
+test("init exposes tracked local YAML without adding an obsolete Codex ignore rule", async () => {
   const t = tempEnv(), opts = {cwd: t.project, env: t.env};
   git(t.project, "init", "-b", "main");
   writeFileSync(join(t.project, ".gitignore"), "node_modules/\n.loadouts/\n# keep me\n");
   expect((await run(["init", "--harness", "claude-code"], opts)).code).toBe(0);
   expect(existsSync(join(t.project, ".loadouts"))).toBe(true);
   expect(git(t.project, "ls-files", "--others", "--exclude-standard")).toContain(".loadouts/.gitkeep");
-  expect(readFileSync(join(t.project, ".gitignore"), "utf8")).toBe("node_modules/\n.loadouts/codex-home/\n# keep me\n");
+  expect(readFileSync(join(t.project, ".gitignore"), "utf8")).toBe("node_modules/\n# keep me\n");
   writeFileSync(join(t.project, ".loadouts/catalog/backend.yml"), "name: backend\nitems: {}\n");
   expect(git(t.project, "ls-files", "--others", "--exclude-standard")).toContain(".loadouts/catalog/backend.yml");
-  expect(git(t.project, "check-ignore", ".loadouts/codex-home/auth.json")).toBe(".loadouts/codex-home/auth.json");
   expect((await run(["init", "--harness", "claude-code"], opts)).stdout).toContain("Nothing changed.");
+});
+
+test("install cleans up the obsolete rule without changing other ignore entries", async () => {
+  const t = tempEnv(), opts = {cwd: t.project, env: t.env};
+  expect((await run(["init", "--harness", "claude-code"], opts)).code).toBe(0);
+  const file = join(t.project, ".gitignore");
+  const original = "# local\r\n.loadouts/codex-home/\r\n.loadouts/installers/\r\n";
+  writeFileSync(file, original);
+  expect((await run(["install"], opts)).code).toBe(0);
+  expect(readFileSync(file, "utf8")).toBe("# local\r\n.loadouts/installers/\r\n");
 });
 
 test("local-only application works offline and requires explicit reapplication of edits", async () => {

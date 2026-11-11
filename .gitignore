@@ -1,4 +1,13 @@
 node_modules/
 dist/
-.loadouts/
+.agents/skills/bun-development/
+.agents/skills/gh/
+.agents/skills/git-commit/
+.agents/skills/optique/
+.agents/skills/unslop/
+.claude/skills/bun-development
+.claude/skills/gh
+.claude/skills/git-commit
+.claude/skills/optique
+.claude/skills/unslop
 .superpowers/

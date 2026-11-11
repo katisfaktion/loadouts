@@ -14,6 +14,7 @@ test("launch arguments and environment preserve native configuration inheritance
 });
 test.each(["claude", "codex"])("%s forwards argv, environment and exit status without auth or configuration writes", async binName => {
   const t = tempEnv(), opts = {cwd: t.project, env: t.env};
+  writeFileSync(join(t.project, ".gitignore"), "node_modules/\n");
   expect((await run(["init"], opts)).code).toBe(0);
   expect((await run(["install"], opts)).code).toBe(0);
   const bin = join(t.project, "bin"); mkdirSync(bin);
@@ -43,14 +44,14 @@ test("launch forwards help flags and child exit status untouched", async () => {
   expect(r.code).toBe(7); expect(r.stdout).toBe("--help\n--model\nx\n");
 });
 
-test("direct Codex launch ignores generated state before starting", async () => {
+test("direct Codex launch works without creating ignore rules", async () => {
   const t = tempEnv(), opts = {cwd: t.project, env: t.env}, bin = join(t.project, "bin");
   mkdirSync(bin); mkdirSync(join(t.home, ".codex")); writeFileSync(join(t.home, ".codex/auth.json"), "{}");
-  writeFileSync(join(bin, "codex"), '#!/bin/sh\ntest -f .gitignore || exit 9\nexit 0\n', {mode: 0o755});
+  writeFileSync(join(bin, "codex"), '#!/bin/sh\ntest -f .codex/config.toml || exit 9\nexit 0\n', {mode: 0o755});
   await run(["init", "--harness", "codex"], opts);
   await run(["install"], opts);
   expect((await run(["codex"], {...opts, env: {...t.env, PATH: bin}})).code).toBe(0);
-  expect(await Bun.file(join(t.project, ".gitignore")).text()).toContain(".loadouts/");
+  expect(existsSync(join(t.project, ".gitignore"))).toBe(false);
 });
 
 test("launch requires a completed install matching the manifest", async () => {

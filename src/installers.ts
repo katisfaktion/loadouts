@@ -10,7 +10,6 @@ import { stringifyCodexConfig } from "./codex";
 const id = "codebase-memory", command = "codebase-memory-mcp";
 const receiptPath = ".loadouts/installers/codebase-memory.json";
 const hookFiles = {"claude-code": ".claude/settings.local.json", codex: ".codex/hooks.json"};
-const archived = (path: string) => path.startsWith(".loadouts/codex-home/");
 const instructionsPath = ".loadouts/installers/codebase-memory.md";
 type Hooks = Record<string, any[]>;
 interface Receipt { version: string; binary: string; identity: string; harnesses: Harness[]; files: Record<string, string>; hooks: Record<string, Hooks>; indexedRoot?: string; pending?: boolean; previousFiles?: Record<string, string>; previousHooks?: Record<string, Hooks> }
@@ -28,7 +27,7 @@ function safePath(project: string, relative: string): string {
   return path;
 }
 function assetPath(path: string): boolean {
-  return /^(?:\.claude|\.codex|\.agents|\.loadouts\/codex-home)\/(?:skills\/codebase-memory\/.+|agents\/codebase-memory(?:-scout|-auditor)?\.(?:md|toml))$/.test(path) || path === ".loadouts/codex-home/AGENTS.md" || path === instructionsPath;
+  return /^(?:\.claude|\.codex|\.agents)\/(?:skills\/codebase-memory\/.+|agents\/codebase-memory(?:-scout|-auditor)?\.(?:md|toml))$/.test(path) || path === instructionsPath;
 }
 function receipt(project: string): Receipt | null {
   const file = safePath(project, receiptPath);
@@ -38,7 +37,7 @@ function receipt(project: string): Receipt | null {
     if (!object(r) || !["version", "binary", "identity"].every(k => typeof r[k] === "string") || !Array.isArray(r.harnesses) || r.harnesses.some((h: string) => !["claude-code", "codex"].includes(h)) || !object(r.files) || !object(r.hooks) || (r.indexedRoot !== undefined && typeof r.indexedRoot !== "string")) throw new Error();
     if (r.pending !== undefined && r.pending !== true || r.previousFiles !== undefined && !object(r.previousFiles) || r.previousHooks !== undefined && !object(r.previousHooks)) throw new Error();
     for (const entries of [r.files, r.previousFiles ?? {}]) for (const [path, digest] of Object.entries(entries)) if (!assetPath(path) || !/^[a-f0-9]{64}$/.test(String(digest))) throw new Error();
-    for (const entries of [r.hooks, r.previousHooks ?? {}]) for (const [path, hooks] of Object.entries(entries)) if (![...Object.values(hookFiles), ".loadouts/codex-home/hooks.json"].includes(path) || !object(hooks) || Object.values(hooks as object).some(v => !Array.isArray(v))) throw new Error();
+    for (const entries of [r.hooks, r.previousHooks ?? {}]) for (const [path, hooks] of Object.entries(entries)) if (!Object.values(hookFiles).includes(path) || !object(hooks) || Object.values(hooks as object).some(v => !Array.isArray(v))) throw new Error();
     return r;
   } catch { return failure(`invalid installer receipt ${receiptPath}`); }
 }
@@ -141,7 +140,7 @@ export function missingInstallerArtifacts(project: string, lock: Lock): string[]
   if (!Object.keys(lock.installed).some(k => k.startsWith("installer:"))) return [];
   try {
     const r = receipt(project);
-    if (!r || [...Object.keys(r.files), ...Object.keys(r.hooks)].some(archived) || r.pending || r.indexedRoot !== resolve(project) || !Bun.which(command)) return ["installer:codebase-memory (run loadouts install)"];
+    if (!r || r.pending || r.indexedRoot !== resolve(project) || !Bun.which(command)) return ["installer:codebase-memory (run loadouts install)"];
     const missing = Object.entries(r.files).filter(([path, digest]) => { const file = safePath(project, path); return !existsSync(file) || hash(readFileSync(file, "utf8")) !== digest; }).map(([path]) => path);
     for (const [path, hooks] of Object.entries(r.hooks)) {
       const actual = readHooks(project, path).hooks ?? {};
@@ -157,7 +156,6 @@ export async function prepareInstallers(project: string, lock: Lock, keys: strin
   const harnesses = (["claude-code", "codex"] as Harness[]).filter(h => keys.includes(`installer:${h}:${id}`));
   const previous = receipt(project);
   if (!harnesses.length && !previous) return async () => {};
-  const legacy = previous && [...Object.keys(previous.files), ...Object.keys(previous.hooks)].some(archived);
   checkInstallerPrerequisites(keys);
   const binary = harnesses.length ? Bun.which(command)! : "";
   const version = harnesses.length ? (await run(binary, ["--version"], project)).match(/^codebase-memory-mcp\s+(\S+)$/)?.[1] : undefined;
@@ -178,7 +176,7 @@ export async function prepareInstallers(project: string, lock: Lock, keys: strin
     return true;
   });
   let next = {files: {} as Record<string, string>, hooks: {} as Record<string, Hooks>};
-  if (harnesses.length) next = intact && !legacy && !previous!.pending && previous!.identity === identity && previous!.version === version && equal(previous!.harnesses, harnesses)
+  if (harnesses.length) next = intact && !previous!.pending && previous!.identity === identity && previous!.version === version && equal(previous!.harnesses, harnesses)
     ? {files: Object.fromEntries(Object.keys(previous!.files).map(path => [path, readFileSync(safePath(project, path), "utf8")])), hooks: previous!.hooks}
     : await generate(project, binary, harnesses);
   const checkFiles = () => {
@@ -192,7 +190,6 @@ export async function prepareInstallers(project: string, lock: Lock, keys: strin
   if (previous?.pending) for (const [path, events] of Object.entries(previous.previousHooks ?? {})) for (const [event, entries] of Object.entries(events)) {
     oldHooks[path] ??= {}; oldHooks[path]![event] = [...oldHooks[path]![event] ?? [], ...entries];
   }
-  for (const path of Object.keys(oldHooks)) if (archived(path)) delete oldHooks[path];
   const hooks = hookUpdates(project, oldHooks, next.hooks);
   const file = safePath(project, receiptPath);
   const current: Receipt = {version: version ?? previous!.version, binary, identity, harnesses, files: Object.fromEntries(Object.entries(next.files).map(([path, text]) => [path, hash(text)])), hooks: next.hooks, ...(previous?.indexedRoot ? {indexedRoot: previous.indexedRoot} : {})};
@@ -207,7 +204,7 @@ export async function prepareInstallers(project: string, lock: Lock, keys: strin
     if (applying) writeIfChanged(file, JSON.stringify({...current, pending: true, previousFiles: {...previous?.files, ...previous?.previousFiles}, previousHooks: oldHooks, files: {...previous?.files, ...current.files}}, null, 2) + "\n");
     for (const [path, text] of Object.entries(next.files)) writeIfChanged(safePath(project, path), text);
     for (const [path, text] of currentHooks) writeIfChanged(safePath(project, path), text);
-    for (const path of new Set([...Object.keys(previous?.files ?? {}), ...Object.keys(previous?.previousFiles ?? {})])) if (!archived(path) && !Object.hasOwn(next.files, path) && existsSync(safePath(project, path))) unlinkSync(safePath(project, path));
+    for (const path of new Set([...Object.keys(previous?.files ?? {}), ...Object.keys(previous?.previousFiles ?? {})])) if (!Object.hasOwn(next.files, path) && existsSync(safePath(project, path))) unlinkSync(safePath(project, path));
     if (!harnesses.length) {
       unlinkSync(file); if (lock.installers) delete lock.installers[id];
       return;

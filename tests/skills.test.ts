@@ -1,8 +1,38 @@
 import { test, expect } from "bun:test";
-import { cpSync, lstatSync, readFileSync, existsSync, mkdirSync, writeFileSync, symlinkSync } from "node:fs";
+import { cpSync, lstatSync, readFileSync, existsSync, mkdirSync, rmSync, writeFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
-import { addSkills, installSkills, removeSkills, listSkills } from "../src/skills";
+import { addSkills, installSkills, removeSkills, listSkills, readSkillLock } from "../src/skills";
 import { repo, tempEnv, withEnv } from "./helpers";
+
+test("only existing v2 skill locks may have an explicitly empty digest", () => {
+  const t = tempEnv(), file = join(t.project, "skills-lock.json");
+  for (const version of [1, 2] as const) for (const computedHash of [undefined, null, "bad", ""]) {
+    writeFileSync(file, JSON.stringify({version, skills: {review: {sourceType: "github", source: "acme/tools", computedHash}}}));
+    expect(() => readSkillLock(t.project, version)).toThrow("invalid skills-lock.json");
+    if (version === 2 && computedHash === "") expect(readSkillLock(t.project).skills.review.computedHash).toBe("");
+    else expect(() => readSkillLock(t.project)).toThrow("invalid skills-lock.json");
+  }
+});
+
+test.each([1, 2])("the default installer requests the exact package compatible with lock v%i", async version => {
+  const t = tempEnv(), bin = join(t.home, "bin");
+  const pkg = version === 1 ? "skills@1.7.6" : "skills@1.8.0";
+  mkdirSync(bin);
+  writeFileSync(join(bin, "npx"), `#!/bin/sh
+test "$4" = "${pkg}" || { echo "Unexpected installer: $4" >&2; exit 1; }
+shift 4
+exec bun "${join(repo, "tests/fixtures/fake-skills.ts")}" "$@"
+`, {mode: 0o755});
+  if (version === 1) writeFileSync(join(t.project, "skills-lock.json"), '{"version":1,"skills":{}}');
+  await withEnv({...t.env, PATH: bin + ":" + process.env.PATH, FAKE_SKILLS_LOCK_VERSION: String(version)}, async () => {
+    delete process.env.LOADOUTS_SKILLS_CMD;
+    await installSkills(t.project, "acme/tools@review", "codex", {});
+    rmSync(join(t.project, ".agents/skills"), {recursive: true});
+    expect(await installSkills(t.project, "acme/tools@review", "codex", {})).toEqual(["review"]);
+    await removeSkills(t.project, ["review"], "codex");
+    expect(existsSync(join(t.project, ".agents/skills/review"))).toBe(false);
+  });
+});
 
 test("restoring a managed Git skill replaces only identical legacy Claude copies with links", async () => {
   for (const kind of ["identical", "edited", "extra", "symlink"]) {
@@ -54,8 +84,13 @@ test("default npx runner works in pnpm projects and keeps skills in the requeste
   writeFileSync(join(t.project, "package.json"), manifest);
   const bin = join(t.env.LOADOUTS_CACHE!, "npm/node_modules/.bin");
   mkdirSync(bin, {recursive: true});
-  writeFileSync(join(bin, "skills"), `#!${process.execPath}\nimport ${JSON.stringify(join(repo, "tests/fixtures/fake-skills.ts"))};\n`, {mode: 0o755});
-  await withEnv({...t.env, npm_config_offline: "true", npm_config_cache: join(t.home, ".npm"), npm_config_userconfig: join(t.home, ".npmrc"), npm_config_update_notifier: "false"}, async () => {
+  const pkg = join(bin, "../skills");
+  mkdirSync(pkg);
+  writeFileSync(join(pkg, "package.json"), JSON.stringify({name: "skills", version: "1.8.0", bin: {skills: "cli.ts"}}));
+  writeFileSync(join(pkg, "cli.ts"), `#!${process.execPath}\nimport ${JSON.stringify(join(repo, "tests/fixtures/fake-skills.ts"))};\n`, {mode: 0o755});
+  symlinkSync("../skills/cli.ts", join(bin, "skills"));
+  // npx resolves the pinned package in the isolated prefix but executes it in the project.
+  await withEnv({...t.env, PATH: bin + ":" + process.env.PATH, npm_config_offline: "true", npm_config_cache: join(t.home, ".npm"), npm_config_userconfig: join(t.home, ".npmrc"), npm_config_update_notifier: "false"}, async () => {
     delete process.env.LOADOUTS_SKILLS_CMD;
     expect(await addSkills(t.project, "acme/bun-skills@bun", "codex")).toEqual(["bun"]);
     expect(existsSync(join(t.project, ".agents/skills/bun/SKILL.md"))).toBe(true);

@@ -2,10 +2,10 @@ import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, re
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { CliError } from "./errors";
-import { paint } from "./output";
+import { paint, withProgress } from "./output";
 import { activeItems, artifactsFor, sourceFor, type Harness, type Loadout, type PackageSkills } from "./loadout";
 import type { Lock } from "./lock";
-import { checkSkillDirectories, identicalSkillDirectories, linkSkill, missingSkills, readSkillLock, skills, writeSkillLock, type SkillLock } from "./skills";
+import { checkSkillDirectories, fromGithubRepo, identicalSkillDirectories, linkSkill, missingSkills, readSkillLock, skills, writeSkillLock, type SkillLock } from "./skills";
 
 function installedPackage(project: string, name: string): {dir: string; version: string} | null {
   for (let dir = project; ; dir = dirname(dir)) {
@@ -63,9 +63,10 @@ export async function syncPackageSkills(project: string, lock: Lock, loaded: Rec
       writeFileSync(join(stage, "package.json"), JSON.stringify({private: true, dependencies: {[pkg]: "*"}}));
       mkdirSync(dirname(join(stage, "node_modules", pkg)), {recursive: true});
       symlinkSync(current.dir, join(stage, "node_modules", pkg));
-      const result = await skills(stage, ["experimental_sync", "--copy", "--no-remote", "--no-cleanup", "--no-frozen-lockfile", "-a", "codex", "-y", "--include", pkg]);
+      const result = await withProgress(`Syncing skills from ${pkg}`,
+        skills(stage, ["experimental_sync", "--copy", "--no-remote", "--no-cleanup", "--no-frozen-lockfile", "-a", "codex", "-y", "--include", pkg], native.version));
       if (result.code) throw new CliError(`could not sync package skills from ${pkg}: ${result.stderr.trim() || result.stdout.trim()}`, 1, "repair the installed package and retry loadouts install");
-      const discovered = readSkillLock(stage).skills;
+      const discovered = readSkillLock(stage, native.version).skills;
       for (const request of selected) for (const selector of request.policy.include) {
         const [source, name] = selector.split("#");
         if (source === pkg && name && selectsPackageSkill(request.policy, pkg, name) && !Object.hasOwn(discovered, name)) throw new CliError(`package companion ${selector} was not found`, 1, "check the installed package's skill names or adjust the loadout selection");
@@ -87,7 +88,7 @@ export async function syncPackageSkills(project: string, lock: Lock, loaded: Rec
       const replacing = next ? retiring.filter(k => lock.installed[k]!.includes(name)) : [];
       const previousPkg = owners[0]?.split(":")[2]?.split("#")[0];
       const entry = native.skills[name], dest = join(project, ".agents/skills", name), existing = lstatSync(dest, {throwIfNoEntry: false});
-      const gitOwned = replacing.length > 0 && entry?.sourceType === "github" && replacing.every(k => k.split(":")[2]!.split("@")[0] === entry.source);
+      const gitOwned = replacing.length > 0 && replacing.every(k => fromGithubRepo(entry, k.split(":")[2]!.split("@")[0]!));
       if (Object.entries(lock.installed).some(([k, ns]) => k.startsWith("skill:") && !replacing.includes(k) && ns.includes(name)) || (entry && !gitOwned && (!owners.length || entry.sourceType !== "node_modules" || entry.source !== previousPkg)) || (existing && ((!owners.length && !gitOwned) || !existing.isDirectory())) || (next && previousPkg && next.pkg !== previousPkg)) throw conflict(name);
       const link = join(project, ".claude/skills", name), linked = lstatSync(link, {throwIfNoEntry: false});
       const claudeOwned = owners.some(k => k.startsWith("package-skill:claude-code:")) || (gitOwned && replacing.some(k => k.startsWith("skill:claude-code:")));

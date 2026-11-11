@@ -1,0 +1,26 @@
+name: Bug report
+description: Report a loadouts command or setup that behaves unexpectedly.
+labels: [bug]
+body:
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Include the version from the first line of loadouts help, your OS, install method and affected harness.
+      placeholder: "0.1.0, Linux x64, npm via Volta, Codex"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Give the smallest loadout or manifest snippet and the commands that trigger the issue.
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Expected and actual results
+      description: Include the exact error or relevant doctor findings. Remove tokens, private URLs and personal paths.
+    validations:
+      required: true

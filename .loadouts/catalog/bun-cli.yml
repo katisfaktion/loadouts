@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/katisfaktion/loadouts/v0.1.0/schemas/v1/loadout.schema.json
+name: bun-cli
+items:
+  verification:
+    conventions: |
+      Run bun test before committing. For CLI integration tests, use a temporary HOME, a fixture catalog and fake installers; keep network calls and the developer's agent setup out of the test.
+  interface:
+    packageSkills:
+      include: ["@optique/core#optique"]
+    conventions: |
+      When changing a CLI command, keep its help, exit codes and machine-readable output consistent. Add a Changeset for user-visible behavior changes.
+  tooling:
+    skills: [laurigates/claude-plugins@bun-development]
+routing:
+  - when: Selecting bun test flags or building and cross-compiling the standalone CLI
+    use: [tooling]
+  - when: Adding or changing CLI commands, options or argument parsing with Optique
+    use: [interface]

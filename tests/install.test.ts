@@ -13,6 +13,84 @@ function setup(skills = true) {
   const lock = () => JSON.parse(readFileSync(join(t.project, "loadouts.lock.json"), "utf8"));
   return {...t, opts, file, manifest, save, lock};
 }
+test.each([1, 2])("install preserves v%i hashes across a frozen restore", async version => {
+  const t = setup(), file = join(t.project, "skills-lock.json");
+  if (version === 1) writeFileSync(file, JSON.stringify({version, skills: {}}));
+  const opts = {...t.opts, env: {...t.opts.env, FAKE_SKILLS_LOCK_VERSION: String(version)}};
+  const first = await run(["install"], opts);
+  expect(first.code, first.stderr).toBe(0);
+  const before = readFileSync(file, "utf8");
+  expect(JSON.parse(before).version).toBe(version);
+  rmSync(join(t.project, ".agents/skills"), {recursive: true});
+  const restore = await run(["install"], opts);
+  expect(restore.code, restore.stderr).toBe(0);
+  expect(readFileSync(join(t.project, ".claude/skills/review/SKILL.md"), "utf8")).toBe("# review\n");
+  expect(readFileSync(file, "utf8")).toBe(before);
+});
+
+test("install, frozen restore and update recognize a canonical GitHub repository name", async () => {
+  const t = setup(), file = join(t.project, "skills-lock.json");
+  writeFileSync(t.file, "name: work\nitems: {tools: {skills: [AcMe/TOOLS@Review]}}\n");
+  const first = await run(["install"], t.opts);
+  expect(first.code, first.stderr).toBe(0);
+  expect(JSON.parse(readFileSync(file, "utf8")).skills.Review.source).toBe("acme/tools");
+  rmSync(join(t.project, ".agents/skills"), {recursive: true});
+  rmSync(join(t.project, "loadouts.lock.json"));
+  writeFileSync(t.opts.env.FAKE_SKILLS_LOG, "");
+  const restore = await run(["install"], t.opts);
+  expect(restore.code, restore.stderr).toBe(0);
+  expect(readFileSync(t.opts.env.FAKE_SKILLS_LOG, "utf8").trim()).toBe('["experimental_install","--frozen-lockfile"]');
+  expect((await run(["update"], t.opts)).code).toBe(0);
+  expect(readFileSync(join(t.project, ".claude/skills/Review/SKILL.md"), "utf8")).toBe("# Review\n");
+});
+
+test("a migrated v2 empty hash blocks only the affected frozen restore and update repairs it", async () => {
+  const t = setup(), file = join(t.project, "skills-lock.json");
+  const unknown = {source: "acme/tools", sourceType: "github", computedHash: ""};
+  writeFileSync(file, JSON.stringify({version: 2, skills: {unrelated: unknown}}));
+  const first = await run(["install"], t.opts);
+  expect(first.code, first.stderr).toBe(0);
+  const lock = JSON.parse(readFileSync(file, "utf8"));
+  lock.skills.review.computedHash = "";
+  const before = JSON.stringify(lock);
+  writeFileSync(file, before);
+  rmSync(join(t.project, ".agents/skills"), {recursive: true});
+  writeFileSync(t.opts.env.FAKE_SKILLS_LOG, "");
+  const frozen = await run(["install"], t.opts);
+  expect(frozen.code).toBe(1);
+  expect(frozen.stderr).toContain("no verified hash for review");
+  expect(frozen.stderr).toContain("loadouts update");
+  expect(readFileSync(t.opts.env.FAKE_SKILLS_LOG, "utf8")).toBe("");
+  expect(readFileSync(file, "utf8")).toBe(before);
+  const update = await run(["update"], t.opts);
+  expect(update.code, update.stderr).toBe(0);
+  const repaired = JSON.parse(readFileSync(file, "utf8"));
+  expect(repaired.skills.review.computedHash).toMatch(/^[0-9a-f]{64}$/);
+  expect(repaired.skills.unrelated).toEqual(unknown);
+  rmSync(join(t.project, ".agents/skills"), {recursive: true});
+  expect((await run(["install"], t.opts)).code).toBe(0);
+});
+
+test("install leaves an unsupported future skills lock intact", async () => {
+  const t = setup(), file = join(t.project, "skills-lock.json"), before = JSON.stringify({version: 3, skills: {}});
+  writeFileSync(file, before);
+  const r = await run(["install"], t.opts);
+  expect(r.code).toBe(1);
+  expect(r.stderr).toContain("unsupported skills-lock.json version 3");
+  expect(readFileSync(file, "utf8")).toBe(before);
+  expect(existsSync(t.opts.env.FAKE_SKILLS_LOG)).toBe(false);
+});
+
+test("install refuses to mix v2 hashes into a v1 project when the installer is overridden", async () => {
+  const t = setup(), file = join(t.project, "skills-lock.json");
+  const before = JSON.stringify({version: 1, skills: {}});
+  writeFileSync(file, before);
+  const r = await run(["install"], t.opts);
+  expect(r.code).toBe(1);
+  expect(r.stderr).toContain("expected 1");
+  expect(readFileSync(file, "utf8")).toBe(before);
+  expect(existsSync(join(t.project, ".agents/skills/review"))).toBe(false);
+});
 test("install sets up a manifest-only project and a fresh clone without repeating successful installers", async () => {
   const t = setup(); expect((await run(["install"], t.opts)).code).toBe(0);
   expect(t.lock().version).toBe(1); expect(t.lock().installed["skill:codex:acme/tools@review"]).toEqual(["review"]);
@@ -20,7 +98,7 @@ test("install sets up a manifest-only project and a fresh clone without repeatin
   const before = readFileSync(t.opts.env.FAKE_SKILLS_LOG, "utf8"), mtime = statSync(join(t.project, "loadouts.lock.json")).mtimeMs;
   expect((await run(["install"], t.opts)).stdout.trim()).toBe("Nothing changed.");
   expect(readFileSync(t.opts.env.FAKE_SKILLS_LOG, "utf8")).toBe(before); expect(statSync(join(t.project, "loadouts.lock.json")).mtimeMs).toBe(mtime);
-  git(t.project, "init", "-b", "main"); git(t.project, "add", "loadouts.json", "loadouts.lock.json", "skills-lock.json", ".loadouts/catalog", ".gitignore"); git(t.project, "commit", "-m", "Selected setup");
+  git(t.project, "init", "-b", "main"); git(t.project, "add", "loadouts.json", "loadouts.lock.json", "skills-lock.json", ".loadouts/catalog"); git(t.project, "commit", "-m", "Selected setup");
   const other = tempEnv(); git(t.project, "clone", "--local", t.project, other.project);
   const calls = join(other.home, "calls.jsonl");
   const r = await run(["install"], {cwd: other.project, env: {...other.env, FAKE_SKILLS_LOG: calls}}); expect(r.code, r.stderr).toBe(0);

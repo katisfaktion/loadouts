@@ -1,0 +1,36 @@
+{
+  "skills": {
+    "bun-development": {
+      "computedHash": "0e7051997d60ce396182fe72371f3eb47ba360a4bc812e14479bb590032d224a",
+      "skillPath": "typescript-plugin/skills/bun-development/SKILL.md",
+      "source": "laurigates/claude-plugins",
+      "sourceType": "github"
+    },
+    "gh": {
+      "computedHash": "79aa63cc988ba7de21886fd25377656a5b671a01ee107db9a4ca5b951550074b",
+      "skillPath": "skills/gh/SKILL.md",
+      "source": "cli/cli",
+      "sourceType": "github"
+    },
+    "git-commit": {
+      "computedHash": "8f5a47c99951ec09853abf3231c76f48caac5d6b84ea912dd4997e6996885c0b",
+      "skillPath": "skills/git-commit/SKILL.md",
+      "source": "github/awesome-copilot",
+      "sourceType": "github"
+    },
+    "optique": {
+      "computedHash": "f2e3dbd7a94e1f4bb221e87093395804d06421febdfdca0cd99017e131aeb709",
+      "skillPath": "skills/optique/SKILL.md",
+      "source": "@optique/core",
+      "sourceType": "node_modules",
+      "version": "1.3.6"
+    },
+    "unslop": {
+      "computedHash": "eca0ad9fa3a3867c83f3aaf3a058e247a569c8976a68ca423a569b93eb86de5d",
+      "skillPath": "harness/pstack/claude-code/skills/unslop/SKILL.md",
+      "source": "cursor/plugins",
+      "sourceType": "github"
+    }
+  },
+  "version": 1
+}
