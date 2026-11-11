@@ -9,7 +9,7 @@ Start with the user's task. Run `loadouts inspect --json` if you don't know whet
 
 ## Restore a checkout or apply local edits
 
-When the repository has `loadouts.json`, install its application dependencies first if it selects package companion skills. Run `loadouts install --json` to apply selected local YAML, reuse locked catalog commits and restore missing components. Use the same command after upgrading a library that ships companion skills.
+When the repository has `loadouts.json`, install its application dependencies first if it selects package companion skills. Run `loadouts install --json` to apply YAML from `file:./.loadouts/catalog/`, reuse the locked commits for `github:` sources and restore missing components. The CLI reads lock format 1 for `loadouts.lock.json` and rejects development lock formats. Use the same command after upgrading a library that ships companion skills.
 
 Use `loadouts update --json` when the user wants to refresh shared definitions or accept new skill contents. Review the lockfile diff afterward. If a frozen restore fails, read `loadouts agents diagnose` before deciding what to change.
 

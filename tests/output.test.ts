@@ -160,6 +160,9 @@ items:
 
 test("each root help command group has a distinct color", async () => {
   const help = await run(["help"], {env: {...plainEnv, FORCE_COLOR: "1"}});
+  const program = "\x1b[38;5;208mloadouts\x1b[0m";
+  expect(help.stdout.startsWith(program)).toBe(true);
+  expect(help.stdout).toContain(`Usage: ${program} <command> \x1b[2m[...flags] [...args]\x1b[0m`);
   const groups = [...help.stdout.matchAll(/^\x1b\[(\d+)m(?:Guidance|Workflow|Diagnostics|Setup):\x1b\[0m\n((?:  [^\n]+\n)+)/gm)];
   expect(groups).toHaveLength(4);
   const colors = groups.map(([, color, commands]) => {
@@ -167,4 +170,11 @@ test("each root help command group has a distinct color", async () => {
     return color;
   });
   expect(new Set(colors).size).toBe(groups.length);
+  expect(help.stdout).toContain("\x1b[35mSetup:");
+  expect(help.stdout).toContain(`\x1b[${colors[0]}m-h, --help`);
+  const add = await run(["help", "add"], {env: {...plainEnv, FORCE_COLOR: "1"}});
+  for (const flag of ["-h", "--help"]) {
+    expect(add.stdout.split(`\x1b[${colors[0]}m${flag}\x1b[0m`)).toHaveLength(3);
+  }
+  expect(add.stdout).toContain("\x1b[36m--with\x1b[0m");
 });

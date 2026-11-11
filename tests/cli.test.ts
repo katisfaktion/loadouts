@@ -55,6 +55,17 @@ test("unknown commands explain recovery", async () => {
   expect(r.stderr).toContain("fix: run loadouts help");
 });
 
+test.each([
+  [["help", "global", "test"], "loadouts help global"],
+  [["help", "add", "extra"], "loadouts help add"],
+  [["help", "--unknown"], "loadouts help"],
+] as const)("invalid help requests point to a usable page: %j", async (args, page) => {
+  const error = await run([...args]);
+  expect(error.code).toBe(2);
+  expect(error.stderr.trim().split("\n").at(-1)).toBe(`fix: run ${page}`);
+  expect((await run(page.split(" ").slice(1))).code).toBe(0);
+});
+
 test("a missing setup value cannot swallow an unknown flag and write configuration", async () => {
   const t = tempEnv();
   const result = await run(["global", "configure", "--catalog", "--unknown", "--harness", "codex"], {cwd: t.project, env: t.env});
@@ -68,24 +79,36 @@ test("every registered command has examples", () => {
 
 test("install and add help explain committed sources and restoration", async () => {
   const install = await run(["help", "install"]), add = await run(["help", "add"]);
-  for (const text of ["loadouts.json", "loadouts.lock.json", "file:./.loadouts/catalog/", "github:", "loadouts update"]) expect(install.stdout).toContain(text);
+  for (const text of ["loadouts.json", "loadouts.lock.json", "skills-lock.json", "loadouts update", "loadouts agents apply"]) expect(install.stdout).toContain(text);
   expect(add.stdout).toContain("file:./.loadouts/catalog/");
-  expect(install.stdout).toContain("loadouts agents apply");
-  expect(install.stdout).toContain("loadouts agents diagnose");
+  expect(add.stdout).toContain("confirmation_required");
+  const guide = await run(["agents", "apply"]);
+  for (const text of ["file:./.loadouts/catalog/", "github:", "loadouts agents diagnose"]) expect(guide.stdout).toContain(text);
   expect(install.stdout).not.toContain("Example loadouts.json:");
 });
 
-test("install help describes release lock v1 without development migrations", async () => {
-  const result = await run(["help", "install"]);
+test("the checkout guide specifies release lock v1 and rejects development formats", async () => {
+  const result = await run(["agents", "apply"]);
   expect(result.code).toBe(0);
-  expect(result.stdout).toContain("Lock format 1");
-  expect(result.stdout).toContain("Development lock formats are not supported");
+  expect(result.stdout).toContain("lock format 1");
+  expect(result.stdout).toContain("rejects development lock formats");
   expect(result.stdout).not.toMatch(/migrat|locks 1–5|Lock v6/);
+});
+
+test("publish help shows the preview example and identifies the flag that opens a PR", async () => {
+  const result = await run(["help", "publish"]);
+  expect(result.code).toBe(0);
+  expect(result.stdout).toContain("loadouts agents publish");
+  expect(result.stdout).toContain("--catalog OWNER/REPO");
+  expect(result.stdout).toMatch(/--yes +Push a branch and open a pull request/);
+  expect(result.stdout).toMatch(/^  loadouts publish .+--summary [^\n]+$/m);
+  expect(result.stdout).not.toMatch(/^  loadouts publish .*--yes/m);
 });
 
 test.each(["claude", "codex"])("%s help explains normal inheritance and read-only preflight", async command => {
   const r = await run(["help", command]);
-  expect(r.code).toBe(0); expect(r.stdout).toContain("normal configuration inheritance");
+  expect(r.code).toBe(0); expect(r.stdout).toContain("project and user settings");
+  expect(r.stdout).toContain("Forward all arguments"); expect(r.stdout).toContain("agent's exit code");
   expect(r.stdout).toContain("read-only"); expect(r.stdout).toContain("loadouts install");
 });
 

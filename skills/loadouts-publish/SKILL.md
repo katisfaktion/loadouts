@@ -5,17 +5,25 @@ description: Use when preparing a catalog pull request for a project-local loado
 
 # Publish a verified loadout
 
-Identify the applied local YAML, its target catalog and what the user verified on a real task. Record the active choices. Ask for missing verification evidence before proposing a contribution.
+Identify the applied local YAML, the target catalog, the active choices and the real task used to verify them. Ask for any missing verification evidence.
 
-Read `loadouts help publish`. In a temporary checkout of the target catalog's current default branch, inspect `loadouts/<name>.yml`.
+## Compare the draft with the catalog
 
-- For a new entry, check for an existing loadout that already covers the concern. Explain where the new entry fits.
-- For an adaptation, compare the local YAML with both its recorded base revision and the current upstream file using Git. If the base revision is unknown, state which revisions you could compare. Summarize capability and choice changes separately from formatting edits.
+Inspect `loadouts/<name>.yml` on the target catalog's current default branch in a temporary checkout. The local draft's name determines the destination filename.
 
-The publish command copies the whole YAML file to its destination. Preserve intervening upstream changes. If the draft needs reconciliation, get approval for the edits, run `loadouts validate` on the file, install and verify the revised behavior. Skip a PR when the upstream entry already does the job. Renaming a draft changes the catalog filename the PR will propose.
+- For a new entry, check whether another loadout already covers the task. If it does, skip the PR. Otherwise explain what the new entry adds.
+- For an adaptation, compare the draft with both its recorded base revision and the current upstream file. If the base is unknown, say which revisions you compared. Describe changes to capabilities and choices separately from formatting edits.
 
-Publish local dependencies first. Check every include declaration in the YAML being published, including inactive branches, and every declaration in pinned definitions inspected for the active closure for portable GitHub sources: replace local file or machine-specific Git sources with available shared sources, then install and verify the composition before contributing it. Keep includes intact; do not inline dependencies or silently rewrite sources. Preview uses applied graph records and pinned descendant definitions in the existing local Git cache; it refuses missing cache objects without fetching or cloning and makes no GitHub calls.
+Publishing copies the whole YAML file. If upstream has changes the draft would overwrite, ask before editing the draft. Run `loadouts validate <file>`, install the revision and verify it on the task again.
 
-The preview and PR identify verified active choices: inactive targets were checked for source portability only. Do not fetch inactive targets during preview or claim they were installed or tested.
+## Check includes
 
-For each independently useful loadout, run `loadouts publish <name> --catalog owner/repo --summary '<what was verified and why this change is reusable>'` to preview the contribution. The preview shows the proposed YAML and metadata, not an upstream diff. After explicit publication approval, run it with `--yes` to open the PR. Keep each PR focused on that loadout and report its URL. Do not merge, release, or switch the project's source automatically. The user can choose the published shared source later through `add`.
+Keep the include declarations. Publish local dependencies first, replace their local sources with available `github:` sources, then install and verify the composition.
+
+Preview checks every include in the chosen YAML and in each active dependency, including declarations under unselected choices. It reads pinned definitions from the local Git cache and stops if an object is missing. When reporting results, distinguish the choices you tested from the others: inactive targets were checked for source portability only.
+
+## Preview and open the PR
+
+Run `loadouts publish <name> --catalog owner/repo --summary '<what you verified>'` for each independently useful loadout. Show the proposed YAML, PR description and your comparison with upstream. The offline preview supplies the YAML and description. Use the Git comparison for the diff.
+
+After explicit publication approval, repeat the command with `--yes` and report the PR URL. Leave merging, releasing and switching the project's selected source to the user.

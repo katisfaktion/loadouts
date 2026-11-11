@@ -9,8 +9,8 @@ export function reportNote(message: string): void {
   else console.log(message);
 }
 
-export type Tone = "magenta" | "blue" | "cyan" | "green" | "yellow" | "red" | "dim";
-const codes: Record<Tone, number> = {magenta: 35, blue: 34, cyan: 36, green: 32, yellow: 33, red: 31, dim: 2};
+const codes = {magenta: 35, blue: 34, cyan: 36, green: 32, yellow: 33, red: 31, dim: 2, orange: "38;5;208"};
+export type Tone = keyof typeof codes;
 
 export function colorsEnabled(stream: "stdout" | "stderr" = "stdout"): boolean {
   if (jsonNotes.getStore()) return false;

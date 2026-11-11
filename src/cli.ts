@@ -23,16 +23,16 @@ import { guides, guideIndex } from "./guides";
 
 export const COMMANDS: Record<string, { brief: string; hint?: string; summary: string; examples: string[]; run: (args: ParsedCommand) => Promise<number> }> = {
   agents: {brief: "List workflow guides for agents.", hint: "[GUIDE]",
-    summary: "List the available guides or print one in Markdown. Works offline before project setup.",
-    examples: ["loadouts agents", ...Object.keys(guides).map(topic => `loadouts agents ${topic}`)],
+    summary: "List the workflow guides. Give a guide name to read it offline as Markdown.",
+    examples: ["loadouts agents explore"],
     run: async ({positionals: [topic]}) => {
       console.log(topic ? guides[topic]!.body : guideIndex);
       return 0;
     },
   },
   validate: {brief: "Validate a loadout YAML file.", hint: "FILE",
-    summary: "Validate one YAML file offline, including include entry shape and local routing references, without initializing or installing. Does not fetch descendants, resolve graph conflicts or certify semantic compatibility.",
-    examples: ["loadouts validate .loadouts/catalog/backend.yml"],
+    summary: "Check a loadout YAML file before installing it. This offline check covers the file itself, including its routing and include declarations.",
+    examples: ["loadouts validate .loadouts/catalog/testing.yml"],
     run: async args => {
       const {positionals} = args;
       const file = positionals[0]!;
@@ -42,9 +42,9 @@ export const COMMANDS: Record<string, { brief: string; hint?: string; summary: s
       console.log(`${paint("Valid loadout:", "green")} ${parseLoadout(yaml, basename(file)).name}`); return 0;
     },
   },
-  inspect: {brief: "Inventory project and user agent setups.",
-    summary: "Read project and user agent setup metadata without running tools or changing files.",
-    examples: ["loadouts inspect", "loadouts inspect --json"],
+  inspect: {brief: "List tools and instructions in project and user settings.",
+    summary: "Read project and user settings without starting any tools. Works before project setup. Returns exit code 1 if the inventory has warnings.",
+    examples: ["loadouts inspect --json"],
     run: async args => {
       const {values} = args;
       const report = inspectProject(process.cwd());
@@ -60,8 +60,8 @@ export const COMMANDS: Record<string, { brief: string; hint?: string; summary: s
       return report.warnings.length ? 1 : 0;
     },
   },
-  init: {brief: "Initialize the project manifest and local catalog.",
-    summary: "Create loadouts.json and the local catalog; no components are installed.", examples: ["loadouts init --harness codex"],
+  init: {brief: "Create the project manifest and local catalog.",
+    summary: "Create loadouts.json and .loadouts/catalog/ in the current directory. Use loadouts add to install your first loadout.", examples: ["loadouts init --harness codex"],
     run: async args => {
       const {values} = args;
       const project = process.cwd();
@@ -76,42 +76,42 @@ export const COMMANDS: Record<string, { brief: string; hint?: string; summary: s
       console.log(files.length ? files.map(f => `${paint("wrote", "green")} ${f}`).join("\n") : paint("Nothing changed.", "dim")); return 0;
     },
   },
-  install: {brief: "Install declared loadouts and restore missing setup.",
-    summary: "Apply loadouts.json, including selected file:./.loadouts/catalog/ definitions, and reuse the github: commits recorded in loadouts.lock.json. Restore missing Git skills from skills-lock.json with frozen hashes. Install application dependencies first for package companion skills. Use loadouts update to refresh upstream contents. Lock format 1 is required for loadouts.lock.json. Development lock formats are not supported. Read loadouts agents apply for checkout and selection workflows, or loadouts agents diagnose after a failure.",
+  install: {brief: "Install the loadouts listed in loadouts.json.",
+    summary: "Apply loadouts.json and local YAML edits. Restore missing tools from loadouts.lock.json and skills-lock.json. To refresh upstream versions, use loadouts update. For checkout instructions, see loadouts agents apply.",
     examples: ["loadouts install --json"],
     run: async args => { printChanges(await install(requireProject(process.cwd()))); return 0; },
   },
   create: {brief: "Create a local loadout draft.", hint: "NAME",
-    summary: "Create a local draft in .loadouts/catalog/ with the CLI release's schema reference, without selecting or installing it. Works before init at the nearest project or Git root (otherwise the current directory). Existing drafts are never overwritten.",
-    examples: ["loadouts create pipeline", "loadouts create backend --from backend"],
+    summary: "Write a new YAML file in .loadouts/catalog/. Run loadouts add with the file source to use the draft in this project.",
+    examples: ["loadouts create testing", "loadouts create team-testing --from testing"],
     run: async args => {
       const {values, positionals} = args;
       console.log(`${paint("wrote", "green")} ${await createLocal(inspectionRoot(process.cwd()), positionals[0]!, values.from)}`); return 0;
     },
   },
-  publish: {brief: "Preview a catalog contribution; --yes opens a PR.", hint: "NAME",
-    summary: "Preview an applied, verified local loadout contribution, including an included-only local node. Every include declaration in the chosen YAML and inspected active closure, including dormant branches, must use portable GitHub sources. Publish local dependencies first, update their sources, install and verify the selected composition. Offline preview checks active pinned descendants in the existing Git cache and refuses missing cache objects without fetching. Inactive targets receive source portability checks only; they are not fetched or tested. Copies only the chosen YAML, preserving includes; --yes pushes a branch and opens a PR.",
-    examples: ["loadouts publish pipeline --summary 'Verified in my data project'", "loadouts publish pipeline --summary 'Verified in my data project' --yes"],
+  publish: {brief: "Preview or open a catalog pull request.", hint: "NAME",
+    summary: "Preview the YAML and PR description for an applied local loadout. For the catalog review workflow, see loadouts agents publish.",
+    examples: ["loadouts publish testing --summary 'Verified with the browser test suite'"],
     run: async args => {
       const {values, positionals} = args;
       console.log(await publish(requireProject(process.cwd()), positionals[0]!, {summary: values.summary ?? "", catalog: values.catalog, yes: values.yes})); return 0;
     },
   },
-  status: {brief: "Show sources, selections and installation state.",
-    summary: "Show direct roots, included descendants and their parent edges, declared sources, applied selections and whether installation is needed.", examples: ["loadouts status --json"],
+  status: {brief: "Show project loadouts, their sources and installation state.",
+    summary: "Show the loadouts in loadouts.json, the loadouts they include, their active choices and whether you need to run install.", examples: ["loadouts status --json"],
     run: args => projectCommand("status", args),
   },
-  remove: {brief: "Remove a declared loadout and its setup.", hint: "NAME", summary: "Remove a direct selection, retaining descendants still required by another root. Included-only nodes must be removed through their parents.", examples: ["loadouts remove frontend"], run: args => projectCommand("remove", args) },
-  switch: {brief: "Choose a one_of alternative.", hint: "LOADOUT/PATH ALTERNATIVE", summary: "Choose a one_of alternative on a direct selection using its slash-separated group path. Enable containing ancestors first. Switching removes explicit descendant requests under deselected members from this direct entry and reports them; re-enabling uses defaults. For an included-only node, edit the declaring member's includes.<name>.choices or add the same source directly first. Direct choices cannot override conflicting include choices.", examples: ["loadouts switch base/methodology agent-skills", "loadouts switch testing/languages/python/framework unittest", "loadouts switch frontend/framework vue"], run: args => projectCommand("switch", args) },
-  enable: {brief: "Enable an any_of member.", hint: "LOADOUT/PATH MEMBER", summary: "Enable an any_of member on a direct selection using its slash-separated group path. Enable containing ancestors first; a child request never enables them implicitly. For an included-only node, edit the declaring member's includes.<name>.choices or add the same source directly first. Direct choices cannot override conflicting include choices.", examples: ["loadouts enable backend/runtime go", "loadouts enable testing/languages python", "loadouts enable testing/languages/python/extras coverage"], run: args => projectCommand("enable", args) },
-  disable: {brief: "Disable an any_of member.", hint: "LOADOUT/PATH MEMBER", summary: "Disable an any_of member on a direct selection using its slash-separated group path. Disabling a parent removes and reports explicit descendant requests under its deselected member from this direct entry; re-enabling uses defaults. For an included-only node, edit the declaring member's includes.<name>.choices or add the same source directly first. Direct choices cannot override conflicting include choices.", examples: ["loadouts disable backend/runtime go", "loadouts disable testing/languages python", "loadouts disable testing/languages/python/extras coverage"], run: args => projectCommand("disable", args) },
-  harness: {brief: "Add or remove a project harness.", hint: "add|remove HARNESS", summary: "Change project harnesses.", examples: ["loadouts harness add codex"], run: args => projectCommand("harness", args) },
+  remove: {brief: "Remove a loadout from loadouts.json and clean up its project setup.", hint: "NAME", summary: "Remove the named entry from loadouts.json and clean up the project tools and instructions it alone provided. Other loadouts keep the tools they still need. The catalog YAML stays available for reuse.", examples: ["loadouts remove testing"], run: args => projectCommand("remove", args) },
+  switch: {brief: "Switch to another choice in a group.", hint: "LOADOUT/PATH ALTERNATIVE", summary: "Select one alternative in an active one_of group and apply it. Switching clears explicit choices under the previous alternative.", examples: ["loadouts switch testing/languages/python/framework pytest"], run: args => projectCommand("switch", args) },
+  enable: {brief: "Enable an optional choice.", hint: "LOADOUT/PATH MEMBER", summary: "Add a member to an active any_of group and apply the change. For nested groups, select the parent first.", examples: ["loadouts enable testing/languages python"], run: args => projectCommand("enable", args) },
+  disable: {brief: "Disable an optional choice.", hint: "LOADOUT/PATH MEMBER", summary: "Remove a member from an active any_of group and apply the change. This also clears explicit choices nested under that member.", examples: ["loadouts disable testing/languages python"], run: args => projectCommand("disable", args) },
+  harness: {brief: "Add or remove a project harness.", hint: "add|remove HARNESS", summary: "Select or remove claude-code or codex for this project and apply the change immediately. Removing a harness preserves tools another harness uses.", examples: ["loadouts harness remove claude-code --json"], run: args => projectCommand("harness", args) },
   update: {brief: "Refresh shared sources and selected skill contents.",
-    summary: "Refresh shared resolutions throughout the include closure within declared refs and selected skill contents/hashes, keeping choices and applied local snapshots. Review and commit skills-lock.json; use install to apply local edits.", examples: ["loadouts update"],
+    summary: "Refresh shared loadouts within their declared refs and record current skill hashes. Use loadouts install to apply edits to local YAML.", examples: ["loadouts update --json"],
     run: async args => { printChanges(await update(requireProject(process.cwd()))); return 0; },
   },
   doctor: {brief: "Check setup and explain how to fix problems.",
-    summary: "Check the machine defaults, workflow guides and imports written by global configure. Inside a project, also check manifest drift, local/shared name collisions, inherited conflicts, missing artifacts and MCP reachability.", examples: ["loadouts doctor --json"],
+    summary: "Check machine configuration and report fixes. Inside a project, also check selected tools and MCP reachability. These checks can start MCP servers.", examples: ["loadouts doctor --json"],
     run: async args => {
       const {values} = args;
       const findings = await doctor(process.cwd());
@@ -119,11 +119,11 @@ export const COMMANDS: Record<string, { brief: string; hint?: string; summary: s
       return findings.length ? 1 : 0;
     },
   },
-  claude: {brief: "Check setup, then start Claude Code.", hint: "[args...]",summary: "Check installation, then start Claude Code with normal configuration inheritance.", examples: ["loadouts claude -p 'Review this project'"], run: args => launch("claude", requireProject(process.cwd()), args.positionals)},
-  codex: {brief: "Check setup, then start Codex.", hint: "[args...]",summary: "Check installation, then start Codex with normal configuration inheritance.", examples: ["loadouts codex"], run: args => launch("codex", requireProject(process.cwd()), args.positionals)},
+  claude: {brief: "Check setup, then start Claude Code.", hint: "[args...]",summary: "Run a read-only setup check, then start Claude Code with its usual project and user settings. Run loadouts install if the setup needs repair.", examples: ["loadouts claude -p 'Review this project'"], run: args => launch("claude", requireProject(process.cwd()), args.positionals)},
+  codex: {brief: "Check setup, then start Codex.", hint: "[args...]",summary: "Run a read-only setup check, then start Codex with its usual project and user settings. Run loadouts install if the setup needs repair.", examples: ["loadouts codex"], run: args => launch("codex", requireProject(process.cwd()), args.positionals)},
   global: {brief: "Configure machine defaults or prune global tools.", hint: "configure|prune",
-    summary: "Configure the default catalog, harnesses and their workflow guide imports, or preview global tools to prune.",
-    examples: ["loadouts global configure --catalog katisfaktion/agent-loadouts --harness claude-code,codex", "loadouts global prune", "loadouts global prune --yes"],
+    summary: "Use configure to set defaults for this machine. Use prune to preview which global tools would be disabled.",
+    examples: ["loadouts global configure --catalog katisfaktion/agent-loadouts --harness claude-code,codex", "loadouts global prune"],
     run: async ({positionals: [action], values}) => {
       if (action === "configure") {
         const defaults = values.catalog && values.harness ? undefined : readConfig();
@@ -138,21 +138,21 @@ export const COMMANDS: Record<string, { brief: string; hint?: string; summary: s
     },
   },
   list: {brief: "List local and shared loadouts.",
-    summary: "List available names. Add --sources for separate local and catalog candidates accepted by show and add.", examples: ["loadouts list --json --sources", "loadouts list --json"],
+    summary: "List names from the project and shared catalogs. Use --sources to see each source when names overlap.", examples: ["loadouts list --sources --json"],
     run: args => catalogCommand("list", args),
   },
   show: {brief: "Show a loadout definition and its source.", hint: "NAME-OR-SOURCE",
-    summary: "Accept a name or an explicit source from list --sources. Show the full declared tree of items, nested groups, defaults, conditional includes and routing. Installed descendants follow their pinned source.", examples: ["loadouts show sdlc --json"],
+    summary: "Read a loadout's definition, choices and source. Pass a source from loadouts list --sources to inspect a specific local or catalog entry.", examples: ["loadouts show sdlc --json"],
     run: args => catalogCommand("show", args),
   },
   help: {brief: "Show command usage, flags and examples.", hint: "[command]",
-    summary: "Show usage and examples.",
-    examples: ["loadouts help add"],
+    summary: "List commands by task, or give a command name to see its usage and flags.",
+    examples: ["loadouts help add", "loadouts help global configure"],
     run: async args => { console.log(helpText(args.positionals[0], args.positionals[1])); return 0; },
   },
-  add: {brief: "Declare and install loadouts.", hint: "SOURCE...",
-    summary: "Declare direct roots and apply their active include closure. Encode nested requests with --with LOADOUT/PATH=MEMBER[,MEMBER], repeating the option for other groups. All requests are validated together; select ancestors explicitly and omit literal items/one_of/any_of from paths. An empty value clears an any_of group. Inactive requests fail instead of being discarded. Explicit choices must agree across roots and include edges; they never override one another. New bare names use the shared catalog; an existing name keeps its selected source. Replacing a selected source shows the old and new sources and asks for confirmation (default: no). With --json, replacements return confirmation_required on stderr without prompting. Rerun with --yes after approval. Local files never implicitly override shared definitions.",
-    examples: ["loadouts add NAME", "loadouts add file:./.loadouts/catalog/backend.yml", "loadouts add github:katisfaktion/agent-loadouts/sdlc@v0.1.0", "loadouts add testing --with testing/languages=python --with testing/languages/python/framework=unittest"],
+  add: {brief: "Add loadouts to loadouts.json and install them.", hint: "SOURCE...",
+    summary: "Save each loadout's source in loadouts.json and install it for this project. With a name alone, add uses the source already in loadouts.json or looks up a new name in the shared catalog. Replacing a source requires confirmation. With --json, check stderr for confirmation_required.",
+    examples: ["loadouts add sdlc", "loadouts add file:./.loadouts/catalog/testing.yml --with testing/languages=python"],
     run: args => projectCommand("add", args),
   },
 };
