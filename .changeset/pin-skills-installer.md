@@ -2,6 +2,8 @@
 "loadouts": patch
 ---
 
-Use skills 1.8.0 for new projects and version-2 skills lockfiles. Projects with a version-1 skills lockfile automatically use skills 1.7.6 for installs and updates so their frozen content hashes remain valid.
+The CLI chooses the skills installer from the project's `skills-lock.json` format.
 
-GitHub skill sources accept mixed-case repository names. If skills migrated a lockfile with an empty hash, other entries remain usable. To restore the affected skill, recover its verified contents or run `loadouts update` to accept a new hash.
+- New projects and version 2 locks use `skills@1.8.0`. Version 1 locks use `skills@1.7.6` for installs and updates to preserve their frozen hashes.
+- GitHub skill sources accept mixed-case repository names.
+- If a migrated entry has an empty hash, other entries still work. To restore the affected skill, recover its verified contents or run `loadouts update` to accept a new hash.

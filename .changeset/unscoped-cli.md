@@ -2,4 +2,7 @@
 "loadouts": patch
 ---
 
-Run the CLI with `npx agent-loadouts` or install it with `npm install -g agent-loadouts`. The new package uses the same `loadouts` command, version and native binaries as `@katisfaktion/loadouts`.
+Get the same native CLI and release version under either npm name, `agent-loadouts` or `@katisfaktion/loadouts`.
+
+- Run it on demand with `npx agent-loadouts help`.
+- Install it globally with `npm install -g agent-loadouts`, then run `loadouts`.

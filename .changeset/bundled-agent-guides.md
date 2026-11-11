@@ -2,4 +2,10 @@
 "loadouts": minor
 ---
 
-Discover bundled workflow guides with `loadouts agents`. The offline guides cover exploration, installation, diagnosis and catalog contributions. Command help gives the syntax, examples and effects of each command. An invalid help request points to the relevant command page or the command list. For multi-step tasks such as reviewing a catalog contribution, read the matching workflow guide. Use `loadouts agents explore` in place of the removed top-level `loadouts explore` command. `loadouts doctor` checks the machine configuration, guide imports and workflow guidance after setup, including outside a project. Root help groups commands under Guidance, Workflow, Diagnostics and Setup, each with its own color. In the usage line, the program name is bright orange and optional arguments are dimmed. The top-level `loadouts setup` command has moved to `loadouts global configure`. Rerun it to refresh the workflow pointer in each selected agent’s `LOADOUTS.md`.
+Find workflow guides, configure your agents and check their setup from the CLI.
+
+- Use `loadouts agents explore` in place of `loadouts explore`. Run `loadouts agents` to find the offline guides for exploring, applying, diagnosing and publishing loadouts.
+- Use `loadouts global configure` in place of `loadouts setup`. Rerun it to refresh the guide reference in each configured agent's `LOADOUTS.md`.
+- Run `loadouts doctor` from any directory to check machine configuration, guide imports and workflow instructions.
+- Root help groups commands by task: Guidance, Workflow, Diagnostics and Setup. Each group has its own color. The program name is orange and optional arguments are dimmed.
+- Use `loadouts help <command>` for syntax, examples and what the command changes. Invalid help requests point to the relevant page.

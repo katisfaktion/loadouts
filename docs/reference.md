@@ -290,7 +290,7 @@ Opening the PR requires authenticated GitHub access and explicit approval. The C
 
 ## Releasing the CLI
 
-Contributors add a Changeset (`bunx changeset`) for each user-visible change. CI runs tests on PRs with Bun 1.4.4. Changesets opens the version PR. A maintainer merges it to start publication. [Release workflow](../.github/workflows/release.yml)
+Contributors add a Changeset (`bunx changeset`) for each user-visible change. A single change needs one sentence. For several changes, start with a short summary and list each change or migration step in its own bullet. CI runs tests on PRs with Bun 1.4.4. Changesets opens the version PR. A maintainer merges it to start publication. [Release workflow](../.github/workflows/release.yml)
 
 The workflow builds five platform packages (Linux and macOS on x64/arm64, Windows on x64), publishes those first, then publishes both launcher packages, `@katisfaktion/loadouts` and `agent-loadouts`, at the same version. Each declares exact optional dependencies on those binaries and exposes the `loadouts` command. The source package stays private. The GitHub release is created last, with tag `v<VERSION>` pointing at the code and schemas for that release.
 
