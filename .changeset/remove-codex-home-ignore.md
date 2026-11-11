@@ -2,4 +2,4 @@
 "loadouts": patch
 ---
 
-Running `loadouts init` or `loadouts install` removes the obsolete `.loadouts/codex-home/` rule from `.gitignore`.
+`loadouts init` and `loadouts install` remove the obsolete `.loadouts/codex-home/` ignore rule.
