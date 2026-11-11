@@ -36,7 +36,7 @@ function checkSetup(): Finding[] {
         continue;
       }
     }
-    findings.push({kind: "global", message: `Missing or outdated ${description} in ${file}`, fix: "loadouts setup"});
+    findings.push({kind: "global", message: `Missing or outdated ${description} in ${file}`, fix: "loadouts global configure"});
   }
   return findings;
 }

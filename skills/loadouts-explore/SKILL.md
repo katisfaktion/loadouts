@@ -11,7 +11,7 @@ Propose a composition of small, reusable loadouts: unchanged shared entries plus
 
 Start with `loadouts help`, then read the command help for each operation you need (`loadouts help create`, `loadouts help validate`, and later `loadouts help add`). Use the installed CLI's commands, paths and flags as the authority. Do not invent commands or reproduce CLI-managed configuration by hand.
 
-Run `loadouts inspect --json` from the project. It works before setup/init, reads local metadata without running tools, and returns partial results with exit 1 when there are warnings. Preserve those warnings in your assessment.
+Run `loadouts inspect --json` from the project. It works before machine configuration or project initialization, reads local metadata without running tools, and returns partial results with exit 1 when there are warnings. Preserve those warnings in your assessment.
 
 Before external discovery, run `loadouts list --sources --json`. Inspect each relevant candidate with `loadouts show <source> --json` and follow its active includes. Read active choices, loadout-level and active item-level conventions, routing and referenced candidate instructions. Record each source/ref/resolved revision and root-to-owner path where available. Catalog membership alone is not evidence of fit: rank concrete project fit, primary-source support and actual verification evidence. Reuse entries supported by that evidence; preserve failures as evidence gaps. `show` returns parsed data for inspection; it is not an authoring template to copy verbatim into YAML.
 

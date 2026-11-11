@@ -26,7 +26,7 @@ test("npx MCP servers initialize in pnpm projects during apply, harness use and 
   mkdirSync(join(t.home, ".codex")); writeFileSync(join(t.home, ".codex/auth.json"), "{}");
   const env = {...t.env, PATH: `${bin}:${process.env.PATH}`, MCP_PROJECT: t.project, npm_config_offline: "true", npm_config_cache: join(t.home, ".npm"), npm_config_userconfig: join(t.home, ".npmrc"), npm_config_update_notifier: "false"};
   const opts = {cwd: t.project, env};
-  expect((await run(["setup", "--catalog", fixtureCatalog(), "--harness", "claude-code,codex"], opts)).code).toBe(0);
+  expect((await run(["global", "configure", "--catalog", fixtureCatalog(), "--harness", "claude-code,codex"], opts)).code).toBe(0);
   expect((await run(["init"], opts)).code).toBe(0);
   writeFileSync(join(t.project, ".loadouts/catalog/work.yml"), 'name: work\nitems:\n  ui:\n    mcp:\n      ui:\n        command: npx\n        args: [-c, loadouts-mcp-fixture]\n');
   const applied = await run(["add", "file:./.loadouts/catalog/work.yml"], opts);

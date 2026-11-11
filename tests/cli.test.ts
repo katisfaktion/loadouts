@@ -25,16 +25,16 @@ test("root help aliases show compact grouped commands", async () => {
   expect(commands[0]).toEqual(["agents", "help"]);
   expect(commands[1]).toEqual(expect.arrayContaining(["list", "show", "install", "publish", "claude", "codex"]));
   expect(commands[2]).toEqual(expect.arrayContaining(["inspect", "status", "doctor", "validate"]));
-  expect(commands[3]).toEqual(expect.arrayContaining(["setup", "init", "harness", "global"]));
+  expect(commands[3]).toEqual(expect.arrayContaining(["init", "harness", "global"]));
   expect(commands.flat().sort()).toEqual(Object.keys(COMMANDS).sort());
   expect(help.stdout).toContain("Flags:");
 });
 
 test.each([
-  ["setup", "--catalog", "--harness"], ["add", "--with", "--catalog", "--yes"],
+  ["add", "--with", "--catalog", "--yes"],
   ["create", "--from"], ["publish", "--summary", "--catalog", "--yes"],
   ["inspect", "--json"], ["status", "--json"], ["doctor", "--json"],
-  ["list", "--catalog", "--json"], ["show", "--catalog", "--json"], ["global", "--yes"],
+  ["list", "--catalog", "--json"], ["show", "--catalog", "--json"],
 ])("command help documents accepted options for %s", async (name, ...flags) => {
   const result = await run(["help", name]);
   expect(result.code).toBe(0);
@@ -57,7 +57,7 @@ test("unknown commands explain recovery", async () => {
 
 test("a missing setup value cannot swallow an unknown flag and write configuration", async () => {
   const t = tempEnv();
-  const result = await run(["setup", "--catalog", "--unknown", "--harness", "codex"], {cwd: t.project, env: t.env});
+  const result = await run(["global", "configure", "--catalog", "--unknown", "--harness", "codex"], {cwd: t.project, env: t.env});
   expect(result.code).toBe(2);
   expect(readdirSync(t.home, {recursive: true})).toEqual([]);
   expect(readdirSync(t.project, {recursive: true})).toEqual([]);
@@ -87,4 +87,20 @@ test.each(["claude", "codex"])("%s help explains normal inheritance and read-onl
   const r = await run(["help", command]);
   expect(r.code).toBe(0); expect(r.stdout).toContain("normal configuration inheritance");
   expect(r.stdout).toContain("read-only"); expect(r.stdout).toContain("loadouts install");
+});
+
+test("global help distinguishes configure and prune and their options", async () => {
+  const root = await run(["help", "global"]);
+  expect(root.stdout).toContain("configure"); expect(root.stdout).toContain("prune");
+  for (const [action, flags, excluded] of [["configure", ["--harness", "--catalog"], "--yes"], ["prune", ["--yes"], "--harness"]] as const) {
+    const help = await run(["help", "global", action]);
+    expect(help.code, help.stderr).toBe(0);
+    expect(help.stdout).toContain(`loadouts global ${action}`);
+    expect((await run(["global", action, "--help"])).stdout).toBe(help.stdout);
+    for (const flag of [...flags, "--help"]) expect(help.stdout.split("Flags:")[1]).toContain(flag);
+    expect(help.stdout).not.toContain(excluded);
+    expect((await run(["global", action, excluded])).code).toBe(2);
+  }
+  const old = await run(["setup"]);
+  expect(old.code).toBe(2); expect(old.stderr).toContain("loadouts global configure");
 });

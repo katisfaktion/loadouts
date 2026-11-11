@@ -302,7 +302,7 @@ test("bare add uses shared catalog explicitly, local selection requires file sou
 
 test("manifest-only diagnostics find the project from nested directories without applying it", async () => {
   const t = setup(false), nested = join(t.project, "src"); mkdirSync(nested);
-  await run(["setup", "--catalog", fixtureCatalog(), "--harness", "claude-code"], t.opts);
+  await run(["global", "configure", "--catalog", fixtureCatalog(), "--harness", "claude-code"], t.opts);
   const opts = {...t.opts, cwd: nested}, before = readFileSync(join(t.project, "loadouts.json"), "utf8");
   const status = await run(["status", "--json"], opts); expect(status.code).toBe(0); expect(JSON.parse(status.stdout).needsInstall).toBe(true);
   const inspection = JSON.parse((await run(["inspect", "--json"], opts)).stdout);
@@ -312,7 +312,7 @@ test("manifest-only diagnostics find the project from nested directories without
   expect(existsSync(join(t.project, "loadouts.lock.json"))).toBe(false); expect(readFileSync(join(t.project, "loadouts.json"), "utf8")).toBe(before);
 });
 test("status and doctor explain manifest drift while retaining the applied setup", async () => {
-  const t = setup(false); await run(["setup", "--catalog", fixtureCatalog(), "--harness", "claude-code"], t.opts);
+  const t = setup(false); await run(["global", "configure", "--catalog", fixtureCatalog(), "--harness", "claude-code"], t.opts);
   await run(["install"], t.opts); const before = readFileSync(join(t.project, "loadouts.lock.json"), "utf8");
   t.save({...t.manifest, harnesses: ["claude-code"]});
   expect(JSON.parse((await run(["status", "--json"], t.opts)).stdout).needsInstall).toBe(true);
@@ -388,7 +388,7 @@ test.each([".agents/skills", ".claude/skills", ".claude/settings.json", ".mcp.js
   const opts = {...t.opts, env: {...t.opts.env, PATH: `${bin}:${process.env.PATH}`}};
   t.save({...t.manifest, harnesses: ["claude-code"]});
   writeFileSync(t.file, `name: work\nitems:\n  tool:\n    skills: [acme/tools@review]\n    claude: {plugin: review@team, marketplace: acme/team}\n    mcp:\n      ok: {command: ${JSON.stringify(process.execPath)}, args: [${JSON.stringify(join(import.meta.dir, "fixtures/mcp-ok.ts"))}]}\n`);
-  await run(["setup", "--catalog", fixtureCatalog(), "--harness", "claude-code"], opts);
+  await run(["global", "configure", "--catalog", fixtureCatalog(), "--harness", "claude-code"], opts);
   expect((await run(["install"], opts)).code).toBe(0);
   const before = readFileSync(join(t.project, "loadouts.lock.json"), "utf8");
   rmSync(join(t.project, missing), {recursive: true});

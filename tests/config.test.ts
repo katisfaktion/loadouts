@@ -7,7 +7,7 @@ const pointer = "When asked to set up, restore, change, troubleshoot or share pr
 
 test("setup is idempotent and supplies catalog defaults", async () => {
   const t = tempEnv(), catalog = fixtureCatalog(), opts = { cwd: t.project, env: t.env };
-  const args = ["setup", "--catalog", catalog, "--harness", "claude-code,codex"];
+  const args = ["global", "configure", "--catalog", catalog, "--harness", "claude-code,codex"];
   expect((await run(args, opts)).code).toBe(0);
   expect((await run(args, opts)).stdout).toContain("Nothing changed.");
   expect(readFileSync(join(t.home, ".claude/CLAUDE.md"), "utf8")).toBe("@LOADOUTS.md\n");
@@ -25,7 +25,7 @@ test("setup preserves existing instructions and loadout notes", async () => {
     await Bun.write(join(t.home, dir, name), `@RTK.md\n${sentence}\n\nKeep these instructions.\n`);
     await Bun.write(join(t.home, dir, "LOADOUTS.md"), "Keep these loadout notes.");
   }
-  const args = ["setup", "--catalog", "acme/repo", "--harness", "claude-code,codex"];
+  const args = ["global", "configure", "--catalog", "acme/repo", "--harness", "claude-code,codex"];
   expect((await run(args, opts)).code).toBe(0);
   for (const [dir, name] of [[".claude", "CLAUDE.md"], [".codex", "AGENTS.md"]]) {
     const reference = dir === ".claude" ? "@LOADOUTS.md" : `@${join(t.home, dir, "LOADOUTS.md")}`;
@@ -39,7 +39,7 @@ test("setup only adds references for selected harnesses and preserves inline pro
   mkdirSync(join(t.home, ".codex"));
   const prose = "Note: Agent setups are managed by `loadouts`; see `loadouts help`.";
   await Bun.write(join(t.home, ".codex/AGENTS.md"), prose);
-  expect((await run(["setup", "--catalog", "acme/repo", "--harness", "codex"], {cwd: t.project, env: t.env})).code).toBe(0);
+  expect((await run(["global", "configure", "--catalog", "acme/repo", "--harness", "codex"], {cwd: t.project, env: t.env})).code).toBe(0);
   expect(readFileSync(join(t.home, ".codex/AGENTS.md"), "utf8")).toBe(`${prose}\n@${join(t.home, ".codex/LOADOUTS.md")}\n`);
   expect(existsSync(join(t.home, ".claude"))).toBe(false);
 });
@@ -49,7 +49,7 @@ test("setup preserves existing references and CRLF line endings", async () => {
   const sentence = "Agent setups are managed by `loadouts`; see `loadouts help`.";
   await Bun.write(join(dir, "CLAUDE.md"), "@RTK.md\r\n@LOADOUTS.md\r\n");
   await Bun.write(join(dir, "LOADOUTS.md"), `Custom notes.\r\n${sentence}\r\n`);
-  expect((await run(["setup", "--catalog", "acme/repo", "--harness", "claude-code"], {cwd: t.project, env: t.env})).code).toBe(0);
+  expect((await run(["global", "configure", "--catalog", "acme/repo", "--harness", "claude-code"], {cwd: t.project, env: t.env})).code).toBe(0);
   expect(readFileSync(join(dir, "CLAUDE.md"), "utf8")).toBe("@RTK.md\r\n@LOADOUTS.md\r\n");
   expect(readFileSync(join(dir, "LOADOUTS.md"), "utf8")).toBe(`Custom notes.\r\n${pointer}\r\n`);
 });
@@ -59,7 +59,7 @@ test("setup replaces its two previous hint lines and preserves surrounding user 
   const guide = join(dir, "LOADOUTS.md");
   const old = "Agent setups are managed by `loadouts`; see `loadouts help`.";
   await Bun.write(guide, `My note: ${old}\n${old}\nRead bundled workflow guides with \`loadouts agents\`.\nKeep my footer.`);
-  const args = ["setup", "--catalog", "acme/repo", "--harness", "codex"];
+  const args = ["global", "configure", "--catalog", "acme/repo", "--harness", "codex"];
   const opts = {cwd: t.project, env: t.env};
   expect((await run(args, opts)).code).toBe(0);
   expect(readFileSync(guide, "utf8")).toBe(`My note: ${old}\n${pointer}\nKeep my footer.`);
@@ -93,7 +93,7 @@ test("unknown options return usage errors", async () => {
 test("explicit setup repairs malformed user configuration", async () => {
   const t = tempEnv(), dir = join(t.home, ".config/loadouts"); mkdirSync(dir, {recursive: true});
   await Bun.write(join(dir, "config.toml"), "invalid");
-  const r = await run(["setup", "--catalog", "acme/repo", "--harness", "codex"], {cwd: t.project, env: t.env});
+  const r = await run(["global", "configure", "--catalog", "acme/repo", "--harness", "codex"], {cwd: t.project, env: t.env});
   expect(r.code).toBe(0);
   expect(Bun.TOML.parse(readFileSync(join(dir, "config.toml"), "utf8"))).toEqual({catalog: "acme/repo", harnesses: ["codex"]});
 });

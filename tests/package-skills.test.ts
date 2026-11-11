@@ -174,7 +174,7 @@ test("missing packages preserve conventions and diagnostics notice when packages
   const t = setup(); const r = await run(["install"], t.opts); expect(r.code, r.stderr).toBe(0); expect(r.stdout).toContain("@acme/ui");
   expect(t.lock().packageSkills["@acme/ui"].version).toBeNull(); expect(t.text("AGENTS.md")).toContain("Use @acme/ui"); expect(t.text("AGENTS.md")).not.toContain("| Building interfaces |  |");
   expect(JSON.parse((await run(["status", "--json"], t.opts)).stdout).needsInstall).toBeUndefined();
-  await run(["setup", "--catalog", fixtureCatalog(), "--harness", "claude-code"], t.opts);
+  await run(["global", "configure", "--catalog", fixtureCatalog(), "--harness", "claude-code"], t.opts);
   expect((await run(["doctor"], t.opts)).stdout).toContain("@acme/ui");
   pkg(t.project); expect(JSON.parse((await run(["status", "--json"], t.opts)).stdout).needsInstall).toBe(true);
   expect((await run(["install"], t.opts)).code).toBe(0); expect(t.text(".agents/skills/components/SKILL.md")).toContain("2.0.0");

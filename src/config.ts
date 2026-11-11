@@ -17,7 +17,7 @@ export function readConfig(): UserConfig {
     const c = Bun.TOML.parse(readFileSync(file, "utf8")) as unknown as UserConfig;
     if (typeof c.catalog !== "string" || !c.catalog || !Array.isArray(c.harnesses)) throw new Error("invalid fields");
     return { catalog: c.catalog, harnesses: parseHarnesses(c.harnesses.join(",")) };
-  } catch { throw new CliError(`invalid config ${file}`, 1, "run loadouts setup --catalog <repo> --harness claude-code,codex"); }
+  } catch { throw new CliError(`invalid config ${file}`, 1, "run loadouts global configure --catalog <repo> --harness claude-code,codex"); }
 }
 function updateGuide(notes: string): string {
   const pointer = "When asked to set up, restore, change, troubleshoot or share project loadouts, run `loadouts agents` and read the matching guide.";

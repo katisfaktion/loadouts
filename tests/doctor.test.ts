@@ -148,7 +148,7 @@ test("effective inherited MCP alternatives conflict unless the native project di
 
 test("doctor checks setup before project init and reports broken guide imports alongside project findings", async () => {
   const t = tempEnv(), opts = {cwd: t.project, env: t.env};
-  const configure = ["setup", "--catalog", fixtureCatalog(), "--harness", "claude-code,codex"];
+  const configure = ["global", "configure", "--catalog", fixtureCatalog(), "--harness", "claude-code,codex"];
   const diagnose = () => run(["doctor", "--json"], opts);
   expect((await run(configure, opts)).code).toBe(0);
   const clean = await diagnose();
@@ -163,7 +163,7 @@ test("doctor checks setup before project init and reports broken guide imports a
   const findings = JSON.parse(broken.stdout).findings;
   expect(findings).toHaveLength(2);
   for (const file of [codexGuide, claudeInstructions]) {
-    expect(findings).toContainEqual({kind: "global", message: expect.stringContaining(file), fix: "loadouts setup"});
+    expect(findings).toContainEqual({kind: "global", message: expect.stringContaining(file), fix: "loadouts global configure"});
   }
   expect(readFileSync(codexGuide, "utf8")).toBe(stale);
   expect(readFileSync(claudeInstructions, "utf8")).toContain("inline.");
@@ -171,13 +171,13 @@ test("doctor checks setup before project init and reports broken guide imports a
   const projectFindings = JSON.parse((await diagnose()).stdout).findings;
   for (const finding of findings) expect(projectFindings).toContainEqual(finding);
   expect(projectFindings).toContainEqual(expect.objectContaining({kind: "local"}));
-  expect((await run(["setup"], opts)).code).toBe(0);
+  expect((await run(["global", "configure"], opts)).code).toBe(0);
   expect(JSON.parse((await diagnose()).stdout).findings.every((f: any) => f.kind === "local")).toBe(true);
 });
 
 test("doctor checks only configured harnesses and reports missing files and invalid machine config", async () => {
   const t = tempEnv(), opts = {cwd: t.project, env: t.env};
-  expect((await run(["setup", "--harness", "codex"], opts)).code).toBe(0);
+  expect((await run(["global", "configure", "--harness", "codex"], opts)).code).toBe(0);
   const guide = join(t.home, ".codex/LOADOUTS.md");
   unlinkSync(guide);
   const result = await run(["doctor"], opts);

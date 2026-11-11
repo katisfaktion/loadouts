@@ -60,15 +60,6 @@ export const COMMANDS: Record<string, { brief: string; hint?: string; summary: s
       return report.warnings.length ? 1 : 0;
     },
   },
-  setup: {brief: "Set machine defaults and agent help references.",
-    summary: "Set machine defaults and link each selected agent’s global instructions to LOADOUTS.md, which points to the workflow guides.", examples: ["loadouts setup --catalog katisfaktion/agent-loadouts --harness claude-code,codex"],
-    run: async args => {
-      const {values} = args;
-      const defaults = values.catalog && values.harness ? undefined : readConfig();
-      const files = setup({catalog: values.catalog ?? defaults!.catalog, harnesses: values.harness ? parseHarnesses(values.harness) : defaults!.harnesses});
-      console.log(files.length ? files.map(f => `${paint("wrote", "green")} ${f}`).join("\n") : paint("Nothing changed.", "dim")); return 0;
-    },
-  },
   init: {brief: "Initialize the project manifest and local catalog.",
     summary: "Create loadouts.json and the local catalog; no components are installed.", examples: ["loadouts init --harness codex"],
     run: async args => {
@@ -120,7 +111,7 @@ export const COMMANDS: Record<string, { brief: string; hint?: string; summary: s
     run: async args => { printChanges(await update(requireProject(process.cwd()))); return 0; },
   },
   doctor: {brief: "Check setup and explain how to fix problems.",
-    summary: "Check the machine defaults, workflow guides and imports written by setup. Inside a project, also check manifest drift, local/shared name collisions, inherited conflicts, missing artifacts and MCP reachability.", examples: ["loadouts doctor --json"],
+    summary: "Check the machine defaults, workflow guides and imports written by global configure. Inside a project, also check manifest drift, local/shared name collisions, inherited conflicts, missing artifacts and MCP reachability.", examples: ["loadouts doctor --json"],
     run: async args => {
       const {values} = args;
       const findings = await doctor(process.cwd());
@@ -130,10 +121,15 @@ export const COMMANDS: Record<string, { brief: string; hint?: string; summary: s
   },
   claude: {brief: "Check setup, then start Claude Code.", hint: "[args...]",summary: "Check installation, then start Claude Code with normal configuration inheritance.", examples: ["loadouts claude -p 'Review this project'"], run: args => launch("claude", requireProject(process.cwd()), args.positionals)},
   codex: {brief: "Check setup, then start Codex.", hint: "[args...]",summary: "Check installation, then start Codex with normal configuration inheritance.", examples: ["loadouts codex"], run: args => launch("codex", requireProject(process.cwd()), args.positionals)},
-  global: {brief: "Preview or disable global leftovers.", hint: "prune",
-    summary: "Preview or disable global leftovers.", examples: ["loadouts global prune", "loadouts global prune --yes"],
-    run: async args => {
-      const {values} = args;
+  global: {brief: "Configure machine defaults or prune global tools.", hint: "configure|prune",
+    summary: "Configure the default catalog, harnesses and their workflow guide imports, or preview global tools to prune.",
+    examples: ["loadouts global configure --catalog katisfaktion/agent-loadouts --harness claude-code,codex", "loadouts global prune", "loadouts global prune --yes"],
+    run: async ({positionals: [action], values}) => {
+      if (action === "configure") {
+        const defaults = values.catalog && values.harness ? undefined : readConfig();
+        const files = setup({catalog: values.catalog ?? defaults!.catalog, harnesses: values.harness ? parseHarnesses(values.harness) : defaults!.harnesses});
+        console.log(files.length ? files.map(f => `${paint("wrote", "green")} ${f}`).join("\n") : paint("Nothing changed.", "dim")); return 0;
+      }
       const changes = await prune(values.yes ?? false);
       console.log(paint("These changes affect all projects:", "yellow"));
       console.log(changes.map(change => paint(change, "yellow")).join("\n") || paint("Nothing changed.", "dim"));
@@ -152,7 +148,7 @@ export const COMMANDS: Record<string, { brief: string; hint?: string; summary: s
   help: {brief: "Show command usage, flags and examples.", hint: "[command]",
     summary: "Show usage and examples.",
     examples: ["loadouts help add"],
-    run: async args => { console.log(helpText(args.positionals[0])); return 0; },
+    run: async args => { console.log(helpText(args.positionals[0], args.positionals[1])); return 0; },
   },
   add: {brief: "Declare and install loadouts.", hint: "SOURCE...",
     summary: "Declare direct roots and apply their active include closure. Encode nested requests with --with LOADOUT/PATH=MEMBER[,MEMBER], repeating the option for other groups. All requests are validated together; select ancestors explicitly and omit literal items/one_of/any_of from paths. An empty value clears an any_of group. Inactive requests fail instead of being discarded. Explicit choices must agree across roots and include edges; they never override one another. New bare names use the shared catalog; an existing name keeps its selected source. Replacing a selected source shows the old and new sources and asks for confirmation (default: no). With --json, replacements return confirmation_required on stderr without prompting. Rerun with --yes after approval. Local files never implicitly override shared definitions.",
@@ -219,9 +215,10 @@ export async function main(argv: string[]): Promise<number> {
   const notes: string[] = [];
   try {
     const command = COMMANDS[name];
+    if (name === "setup") throw new CliError("setup has moved", 2, "run loadouts global configure");
     if (!Object.hasOwn(COMMANDS, name)) throw new CliError(`unknown command "${name}"`, 2);
     if (flags.some(arg => arg === "--help" || arg === "-h")) {
-      console.log(helpText(name));
+      console.log(helpText(name, name === "global" && args[0] && !args[0].startsWith("-") ? args[0] : undefined));
       return 0;
     }
     const parsed = parseCommand(argv);

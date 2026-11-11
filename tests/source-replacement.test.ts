@@ -103,7 +103,7 @@ test("agent replaces a local selection with a discovered shared source and resto
     expect(r.stderr).toBe("");
     return JSON.parse(r.stdout);
   };
-  expect((await run(["setup", "--catalog", "example/catalog", "--harness", "codex"], opts)).code).toBe(0);
+  expect((await run(["global", "configure", "--catalog", "example/catalog", "--harness", "codex"], opts)).code).toBe(0);
   expect((await run(["init"], opts)).code).toBe(0);
   const local = "file:./.loadouts/catalog/backend.yml";
   writeFileSync(join(t.project, ".loadouts/catalog/backend.yml"), "name: backend\nitems: {local: {skills: [acme/local@local]}}\nconventions: Local only.\n");

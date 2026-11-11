@@ -17,7 +17,7 @@ Use `loadouts update --json` when the user wants to refresh shared definitions o
 
 If the user asks which tools fit a feature, compare the task with the project's existing selections and choices. Propose the smallest change. Read `loadouts agents explore` when you need to discover a new capability. A request for recommendations ends with the proposal.
 
-For an approved selection, read `loadouts help add`. In a new project, run `loadouts init --harness` with the selected agents. Machine-wide defaults and instruction imports belong to `loadouts setup`; a project selection alone needs no global setup.
+For an approved selection, read `loadouts help add`. In a new project, run `loadouts init --harness` with the selected agents. Machine-wide defaults and instruction imports belong to `loadouts global configure`; a project selection alone needs no global setup.
 
 - Read candidates with `loadouts list --sources --json`. Pass the chosen source to `loadouts show <source> --json` to inspect it and `loadouts add <source> --json` to apply it. If stderr contains `error.code = confirmation_required`, show the old and new sources from `error.replacements`. Rerun the same command with `--yes` after the user approves those replacements.
 - Use `switch` for a single alternative, `enable` or `disable` for optional members, and `remove` to drop a direct selection. Each command applies its change immediately. For example, after `loadouts enable testing/languages python`, use `loadouts switch testing/languages/python/framework unittest` if that is the chosen framework.

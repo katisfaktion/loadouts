@@ -113,7 +113,7 @@ test("installation summarizes changes, human status explains choices, and reinst
 
 test("human findings and package warnings are colored and actionable; JSON stays raw", async () => {
   const t = tempEnv(), opts = {cwd: t.project, env: {...t.env, ...plainEnv, FORCE_COLOR: "1"}};
-  expect((await run(["setup", "--catalog", fixtureCatalog(), "--harness", "codex"], opts)).code).toBe(0);
+  expect((await run(["global", "configure", "--catalog", fixtureCatalog(), "--harness", "codex"], opts)).code).toBe(0);
   expect((await run(["init"], opts)).code).toBe(0);
   const doctor = await run(["doctor"], opts);
   expect(doctor.code).toBe(1); expect(doctor.stdout).toContain("\x1b[33m");

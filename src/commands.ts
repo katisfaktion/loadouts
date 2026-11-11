@@ -1,4 +1,4 @@
-import { object, tuple } from "@optique/core/constructs";
+import { object, or, tuple } from "@optique/core/constructs";
 import { argument, command, constant, option, passThrough } from "@optique/core/primitives";
 import { map, multiple } from "@optique/core/modifiers";
 import { parseSync } from "@optique/core/parser";
@@ -27,11 +27,15 @@ const none = constant([] as string[]);
 const empty = constant({});
 const groupMember = tuple([arg("LOADOUT/PATH"), arg("MEMBER")]);
 
+export const globalParsers = {
+  configure: object({positionals: command("configure", constant(["configure"])), values: object({catalog, harness})}),
+  prune: object({positionals: command("prune", constant(["prune"])), values: object({yes})}),
+};
+
 export const commandParsers = {
   agents: object({positionals: multiple(argument(choice(Object.keys(guides), {metavar: "GUIDE"})), {max: 1}), values: empty}),
   validate: object({positionals: tuple([arg("FILE")]), values: empty}),
   inspect: object({positionals: none, values: object({json})}),
-  setup: object({positionals: none, values: object({catalog, harness})}),
   init: object({positionals: none, values: object({harness})}),
   install: object({positionals: none, values: object({json})}),
   create: object({positionals: tuple([arg("NAME")]), values: object({from: map(multiple(textOption("--from", "SHARED-NAME", "Copy a shared loadout into the local catalog.")), values => values.at(-1))})}),
@@ -46,10 +50,16 @@ export const commandParsers = {
   doctor: object({positionals: none, values: object({json})}),
   claude: object({positionals: passThrough({format: "greedy", description: message`Forward all arguments unchanged to Claude Code.`}), values: empty}),
   codex: object({positionals: passThrough({format: "greedy", description: message`Forward all arguments unchanged to Codex.`}), values: empty}),
-  global: object({positionals: command("prune", constant(["prune"])), values: object({yes})}),
+  global: or(globalParsers.configure, globalParsers.prune),
   list: object({positionals: none, values: object({catalog, json, sources: option("--sources", {description: message`List separate candidates with exact sources for show or add.`})})}),
   show: object({positionals: tuple([arg("NAME-OR-SOURCE")]), values: object({catalog, json})}),
-  help: object({positionals: multiple(arg("COMMAND"), {max: 1}), values: empty}),
+  help: object({
+    positionals: or(
+      command("global", map(multiple(argument(choice(Object.keys(globalParsers), {metavar: "ACTION"})), {max: 1}), action => ["global", ...action])),
+      multiple(arg("COMMAND"), {max: 1}),
+    ),
+    values: empty,
+  }),
   add: object({positionals: multiple(arg("LOADOUT"), {min: 1}), values: object({
     json, with: multiple(textOption("--with", "LOADOUT/PATH=CHOICE[,CHOICE]", "Select group members, including nested paths; repeat for other groups. An empty value clears an any_of group. All requests are validated together; select ancestors explicitly.")), catalog,
     yes: map(multiple(option("--yes", {description: message`Confirm source replacements without prompting.`})), values => values.length > 0),
