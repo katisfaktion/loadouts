@@ -2,7 +2,7 @@ import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, re
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { CliError } from "./errors";
-import { paint, withProgress } from "./output";
+import { paint, reportNote, withProgress } from "./output";
 import { activeItems, artifactsFor, sourceFor, type Harness, type Loadout, type PackageSkills } from "./loadout";
 import type { Lock } from "./lock";
 import { checkSkillDirectories, fromGithubRepo, identicalSkillDirectories, linkSkill, missingSkills, readSkillLock, skills, writeSkillLock, type SkillLock } from "./skills";
@@ -58,7 +58,7 @@ export async function syncPackageSkills(project: string, lock: Lock, loaded: Rec
       const selected = requests.filter(r => r.policy.include.some(s => s.split("#")[0] === pkg));
       const current = installedPackage(project, pkg);
       records[pkg] = {version: current?.version ?? null, skills: [], requiredBy: [...new Set(selected.map(r => r.id))].sort()};
-      if (!current) { console.log(paint(`Package ${pkg} is not installed; companions are unavailable. Install project dependencies, then run loadouts install.`, "yellow")); continue; }
+      if (!current) { reportNote(paint(`Package ${pkg} is not installed; companions are unavailable. Install project dependencies, then run loadouts install.`, "yellow")); continue; }
       const stage = mkdtempSync(join(tmpdir(), "loadouts-package-")); stages.push(stage);
       writeFileSync(join(stage, "package.json"), JSON.stringify({private: true, dependencies: {[pkg]: "*"}}));
       mkdirSync(dirname(join(stage, "node_modules", pkg)), {recursive: true});

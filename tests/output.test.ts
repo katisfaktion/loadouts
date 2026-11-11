@@ -130,3 +130,30 @@ test("human findings and package warnings are colored and actionable; JSON stays
     expect(() => JSON.parse(r.stdout)).not.toThrow();
   }
 });
+
+test("selection commands report one JSON result, including nested choice cleanup and installer notes", async () => {
+  const t = tempEnv(), opts = {cwd: t.project, env: {...t.env, FORCE_COLOR: "1"}};
+  await run(["init", "--harness", "codex"], opts);
+  writeFileSync(join(t.project, ".loadouts/catalog/testing.yml"), `name: testing
+items:
+  helpers: {packageSkills: {include: [missing-library]}}
+  tools:
+    any_of:
+      browser:
+        items:
+          runner: {one_of: {a: {}, b: {}}, default: a}
+    default: []
+`);
+  const call = async (...args: string[]) => {
+    const r = await run([...args, "--json"], opts);
+    expect(r.code, r.stderr).toBe(0); expect(r.stderr).toBe("");
+    const result = JSON.parse(r.stdout);
+    for (const key of ["added", "removed", "files"]) expect(Array.isArray(result[key])).toBe(true);
+    return result;
+  };
+  expect((await call("add", "file:./.loadouts/catalog/testing.yml")).notes.join(" ")).toContain("missing-library");
+  await call("enable", "testing/tools", "browser");
+  await call("switch", "testing/tools/browser/runner", "b");
+  expect((await call("disable", "testing/tools", "browser")).removedChoices).toEqual(["testing/tools/browser/runner"]);
+  await call("update"); await call("harness", "add", "claude-code"); await call("remove", "testing");
+});

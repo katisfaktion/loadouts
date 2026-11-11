@@ -46,5 +46,5 @@ export function helpText(command?: string): string {
     const c = COMMANDS[name]!;
     return `  ${paint(name.padEnd(10), tone)}${paint((c.hint ?? "").padEnd(25), "dim")}${c.brief}`;
   }).join("\n")).join("\n\n");
-  return `${paint("loadouts", "magenta")} manages project agent setups. ${paint(`(${version})`, "dim")}\n\nUsage: loadouts <command> ${paint("[...flags]", "cyan")} [...args]\n\nCommands:\n${rows}\n\nFlags:\n  ${paint("-h, --help", "cyan")}                         Show usage, flags and examples.\n\nRead loadouts help <command> for syntax and examples. Use --json on inspect, list, show, status and doctor for structured output.`;
+  return `${paint("loadouts", "magenta")} manages project agent setups. ${paint(`(${version})`, "dim")}\n\nUsage: loadouts <command> ${paint("[...flags]", "cyan")} [...args]\n\nCommands:\n${rows}\n\nFlags:\n  ${paint("-h, --help", "cyan")}                         Show usage, flags and examples.\n\nRead loadouts help <command> for syntax and examples. Use --json for structured inspection, catalog discovery and project selection or installation results.`;
 }

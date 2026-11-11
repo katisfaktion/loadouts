@@ -10,7 +10,7 @@ import { parseLoadout, packageSelector, resolveChoices, activeIncludes, includeD
 export interface Lock { version: 1; roots: Record<string, LoadoutSelection>; includes: Record<string, Record<string, LoadoutSelection>>; installers?: Record<string, {version: string}>; resolved: Record<string, {source: string; catalog?: CatalogRef}>; harnesses: Harness[]; catalog: CatalogRef | null; loadouts: Record<string, Choices>; installed: Record<string, string[]>; pending?: string[]; local?: Record<string, string>; incomplete?: boolean; packageSkills?: Record<string, {version: string | null; skills: string[]; requiredBy: string[]}> }
 export function requireProject(cwd: string): string {
   const project = findProject(cwd);
-  if (!project) throw new CliError("no loadouts project here", 2, "run loadouts init");
+  if (!project) throw new CliError("no loadouts project here", 2, "run loadouts init", "project_not_found");
   return project;
 }
 export function readLock(project: string): Lock {

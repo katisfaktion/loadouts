@@ -3,10 +3,10 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { ParsedCommand } from "./commands";
 import { CliError } from "./errors";
-import { paint, withProgress } from "./output";
+import { jsonNotes, paint, reportNote, withProgress } from "./output";
 import { readLock, writeLock, requireProject, loadoutPaths, validateLockedLoadout, type Lock } from "./lock";
 import { readConfig, parseHarnesses } from "./config";
-import { readLoadout, openCatalog } from "./catalog";
+import { readLoadout, openCatalog, splitCatalogSpec } from "./catalog";
 import { activeItems, artifactsFor, declaredItems, includeDeclarations, resolveChoices, sourceFor, parseLoadout, type Loadout, type McpServer, type Group, type Harness } from "./loadout";
 import { ensureLocalCatalog } from "./local";
 import { installSkills, removeSkills, removeSkillLinks, missingSkills } from "./skills";
@@ -164,7 +164,6 @@ export async function sync(project: string, lock: Lock, opts?: {check?: boolean;
     const missingCompanions = Object.entries(lock.installed).some(([key, names]) => key.startsWith("package-skill:") && missingSkills(project, names, key.split(":")[1] as Harness));
     // Discover and transfer companions while retiring Git ownership is still available.
     await syncPackageSkills(project, lock, loaded);
-    if (existsSync(nativeLockFile) && nativeBefore !== readFileSync(nativeLockFile, "utf8")) files.push("skills-lock.json");
     if (missingCompanions) files.push(".agents/skills/");
     for (const key of removed.filter(k => k.startsWith("skill:"))) {
       const h = key.split(":")[1] as Harness;
@@ -200,6 +199,7 @@ export async function sync(project: string, lock: Lock, opts?: {check?: boolean;
       if (applyClaude(project, new Map([[key, mcp]]), [])) files.push(key.startsWith("mcp:") ? ".mcp.json" : ".claude/settings.json");
       lock.installed[key] = [];
     }
+    if (existsSync(nativeLockFile) && nativeBefore !== readFileSync(nativeLockFile, "utf8")) files.push("skills-lock.json");
     if (ensureGitignore(project)) files.push(".gitignore");
     for (const key of want.keys()) if (key.startsWith("mcp:codex:")) lock.installed[key] = [];
     const repairInstallers = missingInstallerArtifacts(project, lock).length > 0;
@@ -211,20 +211,34 @@ export async function sync(project: string, lock: Lock, opts?: {check?: boolean;
     if (lock.harnesses.includes("claude-code") && ensureClaudeImport(project)) files.push("CLAUDE.md");
     delete lock.incomplete;
   } finally { if (writeLock(project, lock)) files.push("loadouts.lock.json"); }
-  const uniqueFiles = [...new Set(files)];
-  const lines = [...added.map(k => paint(`+ ${k}`, "green")), ...removed.map(k => paint(`- ${k}`, "yellow")), ...uniqueFiles.map(f => `${paint("wrote", "green")} ${f}`)];
-  console.log(lines.length ? `${lines.join("\n")}\n\n${paint(`${added.length} added, ${removed.length} removed, ${uniqueFiles.length} files written.`, "green")}` : paint("Nothing changed.", "dim"));
-  return {added, removed, files: uniqueFiles};
+  const previousCompanions = Object.keys(previousLock?.installed ?? {}).filter(key => key.startsWith("package-skill:"));
+  const currentCompanions = Object.keys(lock.installed).filter(key => key.startsWith("package-skill:"));
+  added.push(...currentCompanions.filter(key => !previousCompanions.includes(key)));
+  removed.push(...previousCompanions.filter(key => !Object.hasOwn(lock.installed, key)));
+  return {added, removed, files: [...new Set(files)]};
 }
-export async function install(project: string, opts?: {manifest?: Manifest; update?: boolean; refreshLocal?: string[] | true}): Promise<void> {
+
+export function printChanges(result: Awaited<ReturnType<typeof sync>>, removedChoices: string[] = []): void {
+  const notes = jsonNotes.getStore();
+  if (notes) {
+    console.log(JSON.stringify({...result, ...(notes.length ? {notes} : {}), ...(removedChoices.length ? {removedChoices} : {})}));
+    return;
+  }
+  const {added, removed, files} = result;
+  const lines = [...added.map(k => paint(`+ ${k}`, "green")), ...removed.map(k => paint(`- ${k}`, "yellow")), ...files.map(f => `${paint("wrote", "green")} ${f}`)];
+  console.log(lines.length ? `${lines.join("\n")}\n\n${paint(`${added.length} added, ${removed.length} removed, ${files.length} files written.`, "green")}` : paint("Nothing changed.", "dim"));
+  if (removedChoices.length) console.log(`Removed inactive descendant requests: ${removedChoices.join(", ")}.`);
+}
+
+export async function install(project: string, opts?: {manifest?: Manifest; update?: boolean; refreshLocal?: string[] | true}) {
   const manifest = opts?.manifest ?? readManifest(project);
   const previous = existsSync(join(project, "loadouts.lock.json")) ? readLock(project) : undefined;
   const lock = await withProgress("Resolving loadout sources", resolveManifest(project, manifest, previous, opts));
   if (opts?.update) for (const [name, entry] of Object.entries(lock.resolved ?? {})) {
     const old = previous?.resolved?.[name]?.catalog;
-    if (old && entry.catalog && old.commit !== entry.catalog.commit) console.log(`${paint(name, "blue")}: ${paint(old.ref, "dim")} → ${entry.catalog.ref}`);
+    if (old && entry.catalog && old.commit !== entry.catalog.commit) reportNote(`${paint(name, "blue")}: ${paint(old.ref, "dim")} → ${entry.catalog.ref}`);
   }
-  await sync(project, lock, {repair: true, updateSkills: opts?.update, beforeApply: () => { if (opts?.manifest && writeManifest(project, manifest)) return "loadouts.json"; }});
+  return sync(project, lock, {repair: true, updateSkills: opts?.update, beforeApply: () => { if (opts?.manifest && writeManifest(project, manifest)) return "loadouts.json"; }});
 }
 export async function projectCommand(command: string, args: ParsedCommand): Promise<number> {
   const {values, positionals} = args;
@@ -280,10 +294,8 @@ export async function projectCommand(command: string, args: ParsedCommand): Prom
   };
   if (command === "add") {
     const original = manifest.loadouts;
-    const spec = values.catalog as string | undefined;
-    const at = spec?.lastIndexOf("@") ?? -1;
-    const repo = spec ? at > 0 ? spec.slice(0, at) : spec : undefined;
-    const ref = spec && at > 0 ? spec.slice(at + 1) : undefined;
+    const spec = values.catalog;
+    const [repo, ref] = spec ? splitCatalogSpec(spec) : [];
     for (const input of positionals) {
       const explicit = input.includes(":");
       const name = explicit ? parseSource(input).name : input;
@@ -300,8 +312,15 @@ export async function projectCommand(command: string, args: ParsedCommand): Prom
     }
     const replacements = Object.entries(manifest.loadouts).filter(([name, entry]) => Object.hasOwn(original, name) && original[name]!.source !== entry.source);
     if (replacements.length) {
-      console.error(paint("Warning: replacing selected loadout sources:", "yellow", "stderr"));
-      for (const [name, entry] of replacements) console.error(`  ${name}\n    old: ${original[name]!.source}\n    new: ${entry.source}`);
+      if (values.json && !values.yes) {
+        const error = new CliError("source replacement requires confirmation", 1, "show these replacements to the user and rerun with --yes after approval", "confirmation_required");
+        error.replacements = replacements.map(([name, entry]) => ({name, oldSource: original[name]!.source, newSource: entry.source}));
+        throw error;
+      }
+      if (!values.json) {
+        console.error(paint("Warning: replacing selected loadout sources:", "yellow", "stderr"));
+        for (const [name, entry] of replacements) console.error(`  ${name}\n    old: ${original[name]!.source}\n    new: ${entry.source}`);
+      }
       if (!values.yes) {
         if (!process.stdin.isTTY || !process.stderr.isTTY) throw new CliError("source replacement requires confirmation", 1, "rerun in a terminal to confirm, or pass --yes to approve these replacements");
         const input = createInterface({input: process.stdin, output: process.stderr});
@@ -345,11 +364,10 @@ export async function projectCommand(command: string, args: ParsedCommand): Prom
     }
     manifest.loadouts[name]!.choices = choices;
   }
-  await install(project, {manifest, refreshLocal});
-  if (removedChoices.length) console.log(`Removed inactive descendant requests: ${removedChoices.join(", ")}.`);
+  printChanges(await install(project, {manifest, refreshLocal}), removedChoices);
   return 0;
 }
 
-export async function update(project: string): Promise<void> {
-  await install(project, {manifest: readManifest(project), update: true, refreshLocal: []});
+export async function update(project: string) {
+  return install(project, {manifest: readManifest(project), update: true, refreshLocal: []});
 }

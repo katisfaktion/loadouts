@@ -10,7 +10,7 @@ import { CliError } from "./errors";
 export interface ParsedCommand {
   name: string;
   positionals: string[];
-  values: {catalog?: string; harness?: string; from?: string; summary?: string; yes?: boolean; json?: boolean; with?: string[]};
+  values: {catalog?: string; harness?: string; from?: string; summary?: string; yes?: boolean; json?: boolean; sources?: boolean; with?: string[]};
 }
 
 const valueOptions = new Set<string>();
@@ -34,25 +34,25 @@ export const commandParsers = {
   inspect: object({positionals: none, values: object({json})}),
   setup: object({positionals: none, values: object({catalog, harness})}),
   init: object({positionals: none, values: object({harness})}),
-  install: object({positionals: none, values: empty}),
+  install: object({positionals: none, values: object({json})}),
   create: object({positionals: tuple([arg("NAME")]), values: object({from: map(multiple(textOption("--from", "SHARED-NAME", "Copy a shared loadout into the local catalog.")), values => values.at(-1))})}),
   publish: object({positionals: tuple([arg("NAME")]), values: object({summary: map(multiple(textOption("--summary", "TEXT", "Describe how this loadout was verified (required to publish).")), values => values.at(-1)), catalog, yes})}),
   status: object({positionals: none, values: object({json})}),
-  remove: object({positionals: tuple([arg("LOADOUT")]), values: empty}),
-  switch: object({positionals: tuple([arg("LOADOUT/PATH"), arg("ALTERNATIVE")]), values: empty}),
-  enable: object({positionals: groupMember, values: empty}),
-  disable: object({positionals: groupMember, values: empty}),
-  harness: object({positionals: tuple([argument(choice(["add", "remove"], {metavar: "ACTION"})), arg("HARNESS")]), values: empty}),
-  update: object({positionals: none, values: empty}),
+  remove: object({positionals: tuple([arg("LOADOUT")]), values: object({json})}),
+  switch: object({positionals: tuple([arg("LOADOUT/PATH"), arg("ALTERNATIVE")]), values: object({json})}),
+  enable: object({positionals: groupMember, values: object({json})}),
+  disable: object({positionals: groupMember, values: object({json})}),
+  harness: object({positionals: tuple([argument(choice(["add", "remove"], {metavar: "ACTION"})), arg("HARNESS")]), values: object({json})}),
+  update: object({positionals: none, values: object({json})}),
   doctor: object({positionals: none, values: object({json})}),
   claude: object({positionals: passThrough({format: "greedy", description: message`Forward all arguments unchanged to Claude Code.`}), values: empty}),
   codex: object({positionals: passThrough({format: "greedy", description: message`Forward all arguments unchanged to Codex.`}), values: empty}),
   global: object({positionals: command("prune", constant(["prune"])), values: object({yes})}),
-  list: object({positionals: none, values: object({catalog, json})}),
-  show: object({positionals: tuple([arg("LOADOUT")]), values: object({catalog, json})}),
+  list: object({positionals: none, values: object({catalog, json, sources: option("--sources", {description: message`List separate candidates with exact sources for show or add.`})})}),
+  show: object({positionals: tuple([arg("NAME-OR-SOURCE")]), values: object({catalog, json})}),
   help: object({positionals: multiple(arg("COMMAND"), {max: 1}), values: empty}),
   add: object({positionals: multiple(arg("LOADOUT"), {min: 1}), values: object({
-    with: multiple(textOption("--with", "LOADOUT/PATH=CHOICE[,CHOICE]", "Select group members, including nested paths; repeat for other groups. An empty value clears an any_of group. All requests are validated together; select ancestors explicitly.")), catalog,
+    json, with: multiple(textOption("--with", "LOADOUT/PATH=CHOICE[,CHOICE]", "Select group members, including nested paths; repeat for other groups. An empty value clears an any_of group. All requests are validated together; select ancestors explicitly.")), catalog,
     yes: map(multiple(option("--yes", {description: message`Confirm source replacements without prompting.`})), values => values.length > 0),
   })}),
 };

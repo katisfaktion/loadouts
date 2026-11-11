@@ -5,6 +5,10 @@ import { CliError } from "./errors";
 import { parseLoadout, type Loadout } from "./loadout";
 
 export interface CatalogRef { repo: string; ref: string; commit: string }
+export function splitCatalogSpec(spec: string): [repo: string, ref?: string] {
+  const at = spec.lastIndexOf("@");
+  return at > 0 ? [spec.slice(0, at), spec.slice(at + 1)] : [spec];
+}
 function catalogPath(repo: string): string {
   return join(cacheDir(), "catalogs", repo.replaceAll("/", "__"));
 }

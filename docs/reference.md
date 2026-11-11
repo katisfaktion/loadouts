@@ -38,7 +38,7 @@ Commit `loadouts.json` at the project root. It selects the agents and the loadou
 
 Set a machine default with `loadouts setup --catalog OWNER/REPO`. A new short name such as `loadouts add testing` uses the shared catalog. Re-adding an existing name keeps its selected source. Use the full source to switch between a project file and a shared definition. If the source changes, `add` shows both sources and asks for confirmation before applying anything. Scripts can approve with `--yes`. Existing explicit choices must be valid in the replacement.
 
-`loadouts list` shows local and shared entries. `doctor` explains a same-name collision and identifies the selected source. `show NAME` follows the project's selection. Use `show NAME --catalog OWNER/REPO` to inspect another catalog.
+`loadouts list --json` lists names. `list --sources --json` lists a separate `{name, kind, source}` for each candidate. Catalog candidates include the listed ref (for example, `@v1.0.0`). Pass the source to `show` or `add` to choose that definition explicitly. Omit the ref when you want future updates to follow new catalog releases. `doctor` explains a same-name collision and identifies the selected source. `show NAME` follows the project's selection. Use `show NAME --catalog OWNER/REPO` to inspect another catalog.
 
 ### What install and update do
 
@@ -51,6 +51,12 @@ Set a machine default with `loadouts setup --catalog OWNER/REPO`. A new short na
 | Codex plugins | Restore missing plugin cache entries. | Refresh selected marketplaces and plugins. |
 
 During a slow operation, an interactive terminal shows the current step and elapsed time on stderr. A complete, unchanged install reports `Nothing changed.` A failed apply records completed work and outstanding ownership so you can fix the reported cause and retry.
+
+### Machine-readable results
+
+With `--json`, `install`, `add`, `switch`, `enable`, `disable`, `remove`, `harness` and `update` write one result to stdout. `added` and `removed` list artifact keys (`added` also covers reinstalled skills). `files` lists managed project paths written during reconciliation. Optional `notes` contain installer notices, and `removedChoices` lists any descendant requests cleared by a parent switch. An intact reinstall returns `{"added":[],"removed":[],"files":[]}` unless it has notices to report.
+
+Failures in JSON mode write one object to stderr with `error.code`, `error.message` and `error.fix`. Source replacement returns `confirmation_required` and a list of `{name, oldSource, newSource}` under `error.replacements` before changing the project. This also applies in a terminal. A completed `doctor --json` with findings or `inspect --json` with warnings returns its report on stdout with exit 1.
 
 ### Files to commit
 
