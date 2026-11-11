@@ -1,5 +1,30 @@
 # loadouts
 
+## 0.2.0
+
+### Minor Changes
+
+- ac2417a: Install and change project loadouts with `--json`.
+  
+  - `loadouts list --sources --json` lists local and shared sources. Inspect one with `loadouts show <source> --json`.
+  - When `add --json` would replace a source, it reports both sources on stderr. Rerun with `--yes` to approve.
+- ac2417a: Run `loadouts agents` to read the offline guides for exploration, installation, troubleshooting and publishing.
+  
+  - `loadouts explore` moved to `loadouts agents explore`.
+  - `loadouts setup` moved to `loadouts global configure`. Run it once to refresh your agent instructions.
+  - `loadouts doctor` now checks machine settings and guide imports outside a project.
+  - Help groups commands by task and points invalid requests to the relevant page.
+
+### Patch Changes
+
+- 144edb9: Slow installs show the current step and elapsed time. For skills, they also show the source and target agent.
+- 144edb9: New projects and v2 skills lockfiles use `skills@1.8.0`. Existing v1 locks use `skills@1.7.6` to preserve their hashes.
+  
+  - GitHub skill sources now accept mixed-case repository names.
+  - An empty hash in a migrated lock affects only that skill. Restore its verified contents or accept a new hash with `loadouts update`.
+- 144edb9: `loadouts init` and `loadouts install` remove the obsolete `.loadouts/codex-home/` ignore rule.
+- 5d0e873: Run `npx agent-loadouts help` or install with `npm install -g agent-loadouts`. It ships the same binary as `@katisfaktion/loadouts`.
+
 ## 0.1.0
 
 ### Minor Changes
